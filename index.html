@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preview Match Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">VS</div>
+      <div>
+        <h1>Preview Match Studio</h1>
+        <p>Visuels d'articles preview · 1200 × 675 px (16:9)</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <div class="seg" id="sportSeg" role="tablist" aria-label="Sport"></div>
+      <button class="btn ghost" id="resetBtn" type="button">Nouveau visuel</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage-col">
+      <div class="stage" id="stage">
+        <canvas id="editor" tabindex="0" aria-label="Zone d'édition du visuel"></canvas>
+        <div class="drop-hint" aria-hidden="true">
+          <div data-side="0"><span>Déposer pour<strong data-role="dropLabel">Équipe A</strong></span></div>
+          <div data-side="1"><span>Déposer pour<strong data-role="dropLabel">Équipe B</strong></span></div>
+        </div>
+      </div>
+      <div class="stage-bar">
+        <span id="statusText">Importez les deux logos pour commencer.</span>
+        <span class="keys"><kbd>Glisser</kbd> déplacer · <kbd>Molette</kbd> taille · <kbd>←↑→↓</kbd> au pixel (<kbd>Maj</kbd> ×10) · <kbd>Alt</kbd> sans magnétisme</span>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <section class="card">
+        <h2><span class="step">1</span>Site</h2>
+        <select class="select" id="siteSelect" aria-label="Site"></select>
+        <small class="note" id="siteNote"></small>
+        <label class="range">Taille du logo
+          <input type="range" id="siteSize" min="24" max="140" step="1">
+          <output id="siteSizeOut"></output>
+        </label>
+        <div class="row-btns">
+          <button class="btn small ghost danger" id="deleteSiteBtn" type="button" hidden>Supprimer ce site</button>
+        </div>
+        <details class="add-site" id="addSite">
+          <summary>＋ Ajouter un site</summary>
+          <form id="addSiteForm" autocomplete="off">
+            <label class="field">Nom du site<input type="text" id="newSiteName" placeholder="ex. monsite.fr" required></label>
+            <label class="field">Logo (PNG/SVG transparent)<input type="file" id="newSiteLogo" accept="image/*" required></label>
+            <button class="btn small primary" type="submit">Enregistrer le site</button>
+            <small class="note">Le site est mémorisé dans ce navigateur : importez ensuite son template à l'étape 2. Pour le partager avec l'équipe, ajoutez-le dans <code>js/config.js</code>.</small>
+          </form>
+        </details>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">2</span>Fond</h2>
+        <div class="template-row">
+          <div class="template-thumb" id="templateThumbWrap"><img id="templateThumb" alt=""></div>
+          <div class="template-info">
+            <strong id="templateName">…</strong>
+            <small class="note" id="templateNote"></small>
+          </div>
+        </div>
+        <div class="row-btns">
+          <label class="btn small">Importer un template<input type="file" accept="image/*" id="templateInput" hidden></label>
+          <button class="btn small ghost" id="templateResetBtn" type="button" hidden>Revenir au template du site</button>
+        </div>
+        <label class="check"><input type="checkbox" id="vsToggle"> Ajouter « VS » au centre</label>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">3</span>Logos des équipes</h2>
+        <div id="teams"></div>
+        <div class="row-btns">
+          <button class="btn small ghost" id="mirrorBtn" type="button" title="Place le logo B en miroir du logo A (même hauteur, même taille)">Symétriser B par rapport à A</button>
+        </div>
+        <label class="check"><input type="checkbox" id="shadowToggle" checked> Ombre portée sous les logos</label>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">4</span>Aperçu &amp; téléchargement</h2>
+        <ul class="checklist" id="checklist"></ul>
+        <button class="btn primary block" id="previewBtn" type="button">Prévisualiser</button>
+      </section>
+    </aside>
+  </main>
+
+  <template id="teamTpl">
+    <div class="team">
+      <div class="team-head">
+        <span class="team-label"><span data-role="label"></span><em data-role="side"></em></span>
+        <span class="badge" data-role="badge"></span>
+      </div>
+      <select class="select club-select" data-role="club" aria-label="Choisir le club"></select>
+      <label class="drop" data-role="drop">
+        <input type="file" accept="image/*" hidden data-role="file">
+        <img data-role="thumb" alt="" hidden>
+        <span data-role="dropText"></span>
+      </label>
+      <label class="range">Taille
+        <input type="range" min="20" max="250" step="1" data-role="size">
+        <output data-role="sizeOut"></output>
+      </label>
+      <div class="row-btns">
+        <button class="btn small primary" type="button" data-role="validate">Valider la position</button>
+        <button class="btn small ghost" type="button" data-role="edit" hidden>Modifier la position</button>
+        <button class="btn small ghost" type="button" data-role="reset">Position par défaut</button>
+      </div>
+    </div>
+  </template>
+
+  <dialog id="previewDialog" class="dialog" aria-labelledby="previewTitle">
+    <div class="dialog-head">
+      <h3 id="previewTitle">Aperçu final</h3>
+      <button class="icon-btn" type="button" data-close aria-label="Fermer">×</button>
+    </div>
+    <div class="preview-img">
+      <img id="previewImg" alt="Aperçu du visuel exporté">
+      <p class="preview-error" id="previewError" hidden></p>
+    </div>
+    <div class="dialog-foot">
+      <label class="field grow">Nom du fichier
+        <span class="filename"><input type="text" id="filenameInput" spellcheck="false"><em id="extLabel">.jpg</em></span>
+      </label>
+      <label class="field">Format
+        <select class="select" id="formatSelect">
+          <option value="jpeg">JPG</option>
+          <option value="webp">WebP</option>
+          <option value="png">PNG</option>
+        </select>
+      </label>
+      <span class="preview-meta" id="previewMeta"></span>
+      <div class="row-btns">
+        <button class="btn ghost" type="button" data-close>Retour à l'édition</button>
+        <button class="btn primary" type="button" id="downloadBtn">Télécharger</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/teams.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+// Clubs proposés dans le menu « Choisir un club » de chaque logo, par sport (id du sport dans config.js).
+// Pour ajouter un club : déposez son logo (SVG ou PNG transparent) dans assets/teams/<sport>/
+// et ajoutez une ligne { id, name, logo }. L'ordre n'a pas d'importance : le menu est trié par nom.
+window.APP_TEAMS = {
+  nba: [
+    { id: 'ATL', name: 'Atlanta Hawks', logo: 'assets/teams/nba/ATL.svg' },
+    { id: 'BOS', name: 'Boston Celtics', logo: 'assets/teams/nba/BOS.svg' },
+    { id: 'BKN', name: 'Brooklyn Nets', logo: 'assets/teams/nba/BKN.svg' },
+    { id: 'CHA', name: 'Charlotte Hornets', logo: 'assets/teams/nba/CHA.svg' },
+    { id: 'CHI', name: 'Chicago Bulls', logo: 'assets/teams/nba/CHI.svg' },
+    { id: 'CLE', name: 'Cleveland Cavaliers', logo: 'assets/teams/nba/CLE.svg' },
+    { id: 'DAL', name: 'Dallas Mavericks', logo: 'assets/teams/nba/DAL.svg' },
+    { id: 'DEN', name: 'Denver Nuggets', logo: 'assets/teams/nba/DEN.svg' },
+    { id: 'DET', name: 'Detroit Pistons', logo: 'assets/teams/nba/DET.svg' },
+    { id: 'GSW', name: 'Golden State Warriors', logo: 'assets/teams/nba/GSW.svg' },
+    { id: 'HOU', name: 'Houston Rockets', logo: 'assets/teams/nba/HOU.svg' },
+    { id: 'IND', name: 'Indiana Pacers', logo: 'assets/teams/nba/IND.svg' },
+    { id: 'LAC', name: 'LA Clippers', logo: 'assets/teams/nba/LAC.svg' },
+    { id: 'LAL', name: 'Los Angeles Lakers', logo: 'assets/teams/nba/LAL.svg' },
+    { id: 'MEM', name: 'Memphis Grizzlies', logo: 'assets/teams/nba/MEM.svg' },
+    { id: 'MIA', name: 'Miami Heat', logo: 'assets/teams/nba/MIA.svg' },
+    { id: 'MIL', name: 'Milwaukee Bucks', logo: 'assets/teams/nba/MIL.svg' },
+    { id: 'MIN', name: 'Minnesota Timberwolves', logo: 'assets/teams/nba/MIN.svg' },
+    { id: 'NOP', name: 'New Orleans Pelicans', logo: 'assets/teams/nba/NOP.svg' },
+    { id: 'NYK', name: 'New York Knicks', logo: 'assets/teams/nba/NYK.svg' },
+    { id: 'OKC', name: 'Oklahoma City Thunder', logo: 'assets/teams/nba/OKC.svg' },
+    { id: 'ORL', name: 'Orlando Magic', logo: 'assets/teams/nba/ORL.svg' },
+    { id: 'PHI', name: 'Philadelphia 76ers', logo: 'assets/teams/nba/PHI.svg' },
+    { id: 'PHX', name: 'Phoenix Suns', logo: 'assets/teams/nba/PHX.svg' },
+    { id: 'POR', name: 'Portland Trail Blazers', logo: 'assets/teams/nba/POR.svg' },
+    { id: 'SAC', name: 'Sacramento Kings', logo: 'assets/teams/nba/SAC.svg' },
+    { id: 'SAS', name: 'San Antonio Spurs', logo: 'assets/teams/nba/SAS.svg' },
+    { id: 'TOR', name: 'Toronto Raptors', logo: 'assets/teams/nba/TOR.svg' },
+    { id: 'UTA', name: 'Utah Jazz', logo: 'assets/teams/nba/UTA.svg' },
+    { id: 'WAS', name: 'Washington Wizards', logo: 'assets/teams/nba/WAS.svg' },
+  ],
+  football: [],
+};

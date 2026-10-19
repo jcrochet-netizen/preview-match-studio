@@ -1,0 +1,8 @@
+.DS_Store
+.claude/
+
+# assets/templates : seuls les templates utilisés par l'outil sont versionnés.
+# Pour un nouveau template, ajoutez une ligne « !assets/templates/<fichier> » ci-dessous.
+assets/templates/*
+!assets/templates/nba.png
+!assets/templates/lakers.png
