@@ -39,8 +39,7 @@ window.APP_CONFIG = {
       name: 'Basketusa.com',
       sports: ['nba'],
       template: 'assets/templates/nba.png',
-      logo: 'assets/sites/basketusanew.jpg',
-      height: 72, // bandeau sur fond noir : un peu plus haut pour que le texte reste lisible
+      logo: 'assets/sites/basketusa-transparent.png',
     },
     {
       id: 'lakersbrasil',
