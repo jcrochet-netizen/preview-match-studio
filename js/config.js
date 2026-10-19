@@ -6,17 +6,22 @@ window.APP_CONFIG = {
   height: 675,
 
   // Sports proposés en haut de l'écran.
+  //   label, sides : texte unique, ou un texte par langue { fr, en, 'pt-BR' }
   //   template : fond utilisé si le site choisi n'a pas de template propre (optionnel)
   //   teamLogo : remplace le réglage teamLogo plus bas pour ce sport (optionnel)
   sports: [
     {
       id: 'nba',
       label: 'NBA',
-      sides: ['Équipe A', 'Équipe B'],
+      sides: { fr: ['Équipe A', 'Équipe B'], en: ['Team A', 'Team B'], 'pt-BR': ['Time A', 'Time B'] },
       // Logos centrés dans l'espace libre entre les bandes et le VS des templates NBA
       teamLogo: { box: 300, positions: [[350, 338], [850, 338]] },
     },
-    { id: 'football', label: 'Football', sides: ['Club A', 'Club B'] },
+    {
+      id: 'football',
+      label: { fr: 'Football', en: 'Football', 'pt-BR': 'Futebol' },
+      sides: { fr: ['Club A', 'Club B'], en: ['Club A', 'Club B'], 'pt-BR': ['Clube A', 'Clube B'] },
+    },
   ],
 
   // Sites proposés dans le menu « Site ». Chaque site a son template et son logo (en haut à droite).
@@ -34,8 +39,8 @@ window.APP_CONFIG = {
       name: 'Basketusa.com',
       sports: ['nba'],
       template: 'assets/templates/nba.png',
-      // Version à fond transparent (basketusa.png a une bordure gris foncé opaque)
-      logo: 'assets/sites/basketusa-transparent.png',
+      logo: 'assets/sites/basketusanew.jpg',
+      height: 72, // bandeau sur fond noir : un peu plus haut pour que le texte reste lisible
     },
     {
       id: 'lakersbrasil',

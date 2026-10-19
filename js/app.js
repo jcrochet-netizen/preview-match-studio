@@ -112,7 +112,10 @@
   }
 
   function formatSize(bytes) {
-    return bytes < 1048576 ? `${Math.round(bytes / 1024)} Ko` : `${(bytes / 1048576).toFixed(1)} Mo`;
+    const num = (n, digits) => n.toLocaleString(lang, { maximumFractionDigits: digits });
+    return bytes < 1048576
+      ? t('size.kb', { n: num(Math.round(bytes / 1024), 0) })
+      : t('size.mb', { n: num(bytes / 1048576, 1) });
   }
 
   function roundRect(ctx, x, y, w, h, r) {
@@ -133,6 +136,43 @@
       try { localStorage.setItem(`mps:${key}`, JSON.stringify(value)); } catch { /* ignoré */ }
     },
   };
+
+  // ---------- Langue ----------
+  const I18N = window.APP_I18N;
+
+  // Langue mémorisée, sinon celle du navigateur (portugais → pt-BR, anglais → en), sinon français.
+  function detectLang() {
+    const saved = prefs.get('lang', null);
+    if (saved && I18N.dict[saved]) return saved;
+    const nav = (navigator.language || '').toLowerCase();
+    if (nav.startsWith('pt')) return 'pt-BR';
+    if (nav.startsWith('en')) return 'en';
+    return 'fr';
+  }
+  let lang = detectLang();
+
+  // Texte traduit ; une clé absente retombe sur le français. {nom} est remplacé par params.nom.
+  function t(key, params = {}) {
+    const str = I18N.dict[lang]?.[key] ?? I18N.dict.fr[key] ?? key;
+    return str.replace(/\{(\w+)\}/g, (m, k) => (k in params ? params[k] : m));
+  }
+
+  // Valeur de config traduisible : texte unique ou objet { fr, en, 'pt-BR' }.
+  const loc = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v[lang] ?? v.fr ?? Object.values(v)[0] : v);
+  const sportLabel = (sport) => loc(sport.label);
+  const sideName = (i) => loc(state.sport.sides)[i];
+  const pct = (scale) => `${Math.round(scale * 100)}${lang === 'fr' ? ' ' : ''}%`; // « 100 % » en français, « 100% » ailleurs
+
+  function applyStaticTexts(root = document) {
+    root.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
+    root.querySelectorAll('[data-i18n-html]').forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
+    root.querySelectorAll('[data-i18n-attr]').forEach((el) => {
+      el.dataset.i18nAttr.split(';').forEach((pair) => {
+        const [attr, key] = pair.split(':');
+        el.setAttribute(attr, t(key));
+      });
+    });
+  }
 
   // Stockage des images ajoutées depuis l'interface (templates, logos de sites) : IndexedDB.
   const store = (() => {
@@ -195,6 +235,7 @@
     stage: $('#stage'),
     canvas: $('#editor'),
     sportSeg: $('#sportSeg'),
+    langSelect: $('#langSelect'),
     resetBtn: $('#resetBtn'),
     status: $('#statusText'),
     templateThumbWrap: $('#templateThumbWrap'),
@@ -216,6 +257,9 @@
     addSiteForm: $('#addSiteForm'),
     newSiteName: $('#newSiteName'),
     newSiteLogo: $('#newSiteLogo'),
+    newSiteLogoName: $('#newSiteLogoName'),
+    confirmDialog: $('#confirmDialog'),
+    confirmText: $('#confirmText'),
     checklist: $('#checklist'),
     previewBtn: $('#previewBtn'),
     dialog: $('#previewDialog'),
@@ -368,7 +412,7 @@
       c.font = '600 15px Inter, system-ui, sans-serif';
       c.fillStyle = 'rgba(255, 255, 255, 0.55)';
       c.textBaseline = 'bottom';
-      c.fillText('Fond provisoire — importez le template du site (étape 2)', 28, H - 22);
+      c.fillText(t('canvas.placeholderHint'), 28, H - 22);
       c.restore();
     }
   }
@@ -441,10 +485,10 @@
         // Taille plafonnée pour que le texte tienne dans l'emplacement, même sur petit écran.
         const fs = Math.min(16 * u, 28);
         c.font = `700 ${fs}px Inter, system-ui, sans-serif`;
-        c.fillText(`+ ${state.sport.sides[i]}`, r.x + r.w / 2, r.y + r.h / 2 - fs * 0.6);
+        c.fillText(`+ ${sideName(i)}`, r.x + r.w / 2, r.y + r.h / 2 - fs * 0.6);
         c.font = `500 ${fs * 0.68}px Inter, system-ui, sans-serif`;
         c.fillStyle = 'rgba(255, 255, 255, 0.6)';
-        c.fillText('cliquer ou déposer', r.x + r.w / 2, r.y + r.h / 2 + fs * 0.75);
+        c.fillText(t('canvas.slotHint'), r.x + r.w / 2, r.y + r.h / 2 + fs * 0.75);
         return;
       }
 
@@ -538,7 +582,7 @@
       const b = document.createElement('button');
       b.type = 'button';
       b.role = 'tab';
-      b.textContent = sport.label;
+      b.textContent = sportLabel(sport);
       b.dataset.id = sport.id;
       b.addEventListener('click', () => sport !== state.sport && setSport(sport));
       els.sportSeg.append(b);
@@ -612,23 +656,26 @@
 
   function refreshUI() {
     const sport = state.sport;
-    els.sportSeg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.id === sport.id)));
-    document.querySelectorAll('[data-role="dropLabel"]').forEach((el, i) => { el.textContent = sport.sides[i]; });
+    els.sportSeg.querySelectorAll('button').forEach((b) => {
+      b.setAttribute('aria-selected', String(b.dataset.id === sport.id));
+      b.textContent = sportLabel(CFG.sports.find((x) => x.id === b.dataset.id));
+    });
+    document.querySelectorAll('[data-role="dropLabel"]').forEach((el, i) => { el.textContent = sideName(i); });
 
     // Fond
-    const t = state.templateInfo;
-    els.templateName.textContent = t.name;
-    els.templateNote.className = `note${t.source === 'placeholder' ? ' warn' : ''}`;
-    const owner = state.site ? state.site.name : sport.label;
+    const ti = state.templateInfo;
+    els.templateName.textContent = ti.source === 'placeholder' ? t('bg.placeholderName') : ti.name;
+    els.templateNote.className = `note${ti.source === 'placeholder' ? ' warn' : ''}`;
+    const owner = state.site ? state.site.name : sportLabel(sport);
     els.templateNote.textContent = {
-      custom: `Importé pour ${owner} depuis l'interface (mémorisé dans ce navigateur)`,
-      config: `Template de ${owner}`,
-      placeholder: t.path ? `Fichier ${t.path} introuvable` : `Aucun template configuré pour ${owner}`,
-    }[t.source];
+      custom: t('bg.custom', { owner }),
+      config: t('bg.config', { owner }),
+      placeholder: ti.path ? t('bg.missing', { path: ti.path }) : t('bg.none', { owner }),
+    }[ti.source];
     const thumbSrc = state.template ? state.template.src : '';
     if (els.templateThumb.getAttribute('src') !== thumbSrc) els.templateThumb.setAttribute('src', thumbSrc);
     els.templateThumbWrap.classList.toggle('is-football', sport.id === 'football');
-    els.templateResetBtn.hidden = t.source !== 'custom';
+    els.templateResetBtn.hidden = ti.source !== 'custom';
     els.vsToggle.checked = state.vs;
     els.shadowToggle.checked = state.shadow;
 
@@ -641,22 +688,22 @@
       // Un même club ne peut pas être choisi des deux côtés
       const otherId = state.logos[1 - i].teamId;
       [...te.club.options].forEach((o) => { o.disabled = !!o.value && o.value === otherId; });
-      te.label.textContent = sport.sides[i];
-      te.side.textContent = i ? 'à droite' : 'à gauche';
+      te.label.textContent = sideName(i);
+      te.side.textContent = t(i ? 'team.right' : 'team.left');
       te.root.classList.toggle('is-selected', state.selected === i && !l.locked);
       te.root.classList.toggle('is-locked', l.locked);
       const src = l.img ? l.img.src : '';
       if (te.thumb.getAttribute('src') !== src) te.thumb.setAttribute('src', src);
       te.thumb.hidden = !l.img;
-      te.dropText.textContent = l.img && !l.teamId ? `${l.name} — cliquer pour remplacer`
-        : hasTeams ? 'ou importer un logo : clic ou glisser-déposer'
-        : 'Cliquer ou déposer un logo (PNG transparent conseillé)';
-      const [cls, label] = !l.img ? ['', hasTeams ? 'À choisir' : 'À importer'] : l.locked ? ['ok', 'Position validée ✓'] : ['warn', 'À positionner'];
+      te.dropText.textContent = l.img && !l.teamId ? t('team.dropReplace', { name: l.name })
+        : t(hasTeams ? 'team.dropOr' : 'team.dropEmpty');
+      const [cls, label] = !l.img ? ['', hasTeams ? 'badge.choose' : 'badge.import']
+        : l.locked ? ['ok', 'badge.locked'] : ['warn', 'badge.place'];
       te.badge.className = `badge ${cls}`;
-      te.badge.textContent = label;
+      te.badge.textContent = t(label);
       te.size.value = Math.round(l.scale * 100);
       te.size.disabled = !l.img || l.locked;
-      te.sizeOut.textContent = `${Math.round(l.scale * 100)} %`;
+      te.sizeOut.textContent = pct(l.scale);
       te.validate.hidden = l.locked;
       te.validate.disabled = !l.img;
       te.edit.hidden = !l.locked;
@@ -672,23 +719,24 @@
     els.siteSize.value = state.siteHeight;
     els.siteSizeOut.textContent = site ? `${state.siteHeight} px` : '';
     els.deleteSiteBtn.hidden = !(site && site.custom);
+    els.newSiteLogoName.textContent = els.newSiteLogo.files[0]?.name || t('site.noFile');
     if (site && !site.img) {
       els.siteNote.className = 'note warn';
-      els.siteNote.textContent = `Logo introuvable (${site.logo || 'non défini'}) : le nom du site est affiché à la place.`;
+      els.siteNote.textContent = t('site.missingLogo', { path: site.logo || t('site.undefined') });
     } else {
       els.siteNote.className = 'note';
-      els.siteNote.textContent = site ? 'Le site détermine le template ; son logo est placé en haut à droite.' : 'Ajoutez les sites de ce sport dans js/config.js.';
+      els.siteNote.textContent = t(site ? 'site.note' : 'site.noneNote');
     }
 
     // Checklist
     const items = [
       ...state.logos.map((l, i) => ({
         ok: l.img && l.locked,
-        text: `${sport.sides[i]} : ${!l.img ? (hasTeams ? 'club à choisir' : 'logo à importer') : l.locked ? 'position validée' : 'position à valider'}`,
+        text: t(!l.img ? (hasTeams ? 'check.clubToChoose' : 'check.logoToImport') : l.locked ? 'check.locked' : 'check.toValidate', { side: sideName(i) }),
       })),
-      { ok: site ? true : 'warn', text: site ? `Site : ${site.name}` : 'Aucun site sélectionné' },
+      { ok: site ? true : 'warn', text: site ? t('check.site', { name: site.name }) : t('check.noSite') },
     ];
-    if (t.source === 'placeholder') items.unshift({ ok: 'warn', text: 'Fond provisoire utilisé' });
+    if (ti.source === 'placeholder') items.unshift({ ok: 'warn', text: t('check.placeholder') });
     els.checklist.replaceChildren(...items.map((it) => {
       const li = document.createElement('li');
       li.className = it.ok === true ? 'ok' : it.ok === 'warn' ? 'warn' : '';
@@ -696,7 +744,7 @@
       return li;
     }));
     els.previewBtn.disabled = !isReady();
-    els.previewBtn.title = isReady() ? '' : 'Importez et validez la position des deux logos';
+    els.previewBtn.title = isReady() ? '' : t('export.disabledTitle');
 
     refreshStatus();
   }
@@ -705,13 +753,19 @@
     const i = state.selected;
     const l = state.logos[i];
     if (l && l.img) {
-      els.status.innerHTML = `<strong>${state.sport.sides[i]}</strong> · <span class="num">x ${Math.round(l.x)} · y ${Math.round(l.y)} · ${Math.round(l.scale * 100)} %</span>${l.locked ? ' · position validée' : ''}`;
+      els.status.replaceChildren();
+      const strong = document.createElement('strong');
+      strong.textContent = sideName(i);
+      const num = document.createElement('span');
+      num.className = 'num';
+      num.textContent = `x ${Math.round(l.x)} · y ${Math.round(l.y)} · ${pct(l.scale)}`;
+      els.status.append(strong, ' · ', num, l.locked ? t('status.lockedSuffix') : '');
     } else if (isReady()) {
-      els.status.textContent = 'Positions validées : vous pouvez prévisualiser puis télécharger.';
+      els.status.textContent = t('status.ready');
     } else if (state.logos.some((x) => x.img)) {
-      els.status.textContent = 'Cliquez sur un logo pour le sélectionner, déplacez-le puis validez sa position.';
+      els.status.textContent = t('status.select');
     } else {
-      els.status.textContent = 'Importez les deux logos pour commencer.';
+      els.status.textContent = t('status.start');
     }
   }
 
@@ -740,7 +794,7 @@
     const token = ++templateToken;
     const path = (state.site && state.site.template) || state.sport.template;
     let img = null;
-    let info = { source: 'placeholder', name: 'Fond provisoire', path };
+    let info = { source: 'placeholder', name: '', path };
 
     const custom = await store.get(`template:${contextKey()}`);
     if (custom) {
@@ -762,19 +816,19 @@
   }
 
   async function importTemplate(file) {
-    if (!file.type.startsWith('image/')) return toast('Ce fichier n\'est pas une image.');
+    if (!file.type.startsWith('image/')) return toast(t('toast.notImage'));
     const data = await readAsDataURL(file);
     let img;
-    try { img = await loadImage(data); } catch { return toast('Impossible de lire cette image.'); }
+    try { img = await loadImage(data); } catch { return toast(t('toast.unreadable')); }
     const saved = await store.set(`template:${contextKey()}`, { name: file.name, data });
     state.template = img;
     state.templateInfo = { source: 'custom', name: file.name };
     templateToken++;
     const { w, h } = imgSize(img);
-    if (Math.abs(w / h - W / H) > 0.02) toast(`Image ${w}×${h} : elle sera recadrée au format 16:9.`);
-    else if (w < W) toast(`Image de ${w} px de large : elle sera agrandie à ${W} px.`);
-    else if (!saved) toast('Template chargé pour cette session (stockage du navigateur indisponible).');
-    else toast(`Template enregistré pour ${state.site ? state.site.name : state.sport.label}.`);
+    if (Math.abs(w / h - W / H) > 0.02) toast(t('toast.cropped', { w, h }));
+    else if (w < W) toast(t('toast.upscaled', { w, W }));
+    else if (!saved) toast(t('toast.sessionOnly'));
+    else toast(t('toast.templateSaved', { owner: state.site ? state.site.name : sportLabel(state.sport) }));
     refreshUI();
     draw();
   }
@@ -799,22 +853,22 @@
   }
 
   async function setLogo(i, file) {
-    if (!file || !file.type.startsWith('image/')) return toast('Ce fichier n\'est pas une image.');
+    if (!file || !file.type.startsWith('image/')) return toast(t('toast.notImage'));
     const token = ++teamTokens[i];
     let img;
-    try { img = await trimLogo(await loadImage(await readAsDataURL(file))); } catch { return toast('Impossible de lire cette image.'); }
+    try { img = await trimLogo(await loadImage(await readAsDataURL(file))); } catch { return toast(t('toast.unreadable')); }
     if (token !== teamTokens[i]) return;
     applyLogo(i, img, file.name.replace(/\.[^.]+$/, ''), '');
   }
 
   // Clubs du sport en cours (js/teams.js), triés par nom
   const teamsForSport = () => ((window.APP_TEAMS || {})[state.sport.id] || [])
-    .slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    .slice().sort((a, b) => a.name.localeCompare(b.name, lang));
 
   function populateTeamMenus() {
     const teams = teamsForSport();
     teamEls.forEach((te) => {
-      te.club.replaceChildren(new Option('Choisir un club…', ''), ...teams.map((t) => new Option(t.name, t.id)));
+      te.club.replaceChildren(new Option(t('team.chooseClub'), ''), ...teams.map((t) => new Option(t.name, t.id)));
       te.club.hidden = !teams.length;
     });
   }
@@ -830,7 +884,7 @@
         img = await trimLogo(await loadImage(team.logo));
       } catch {
         refreshUI();
-        return toast(`Logo introuvable : ${team.logo}`);
+        return toast(t('toast.teamLogoMissing', { path: team.logo }));
       }
       teamImages.set(key, img);
     }
@@ -857,7 +911,7 @@
   function mirror() {
     const [a, b] = state.logos;
     if (!a.img || !b.img) return;
-    if (b.locked) return toast(`Cliquez d'abord sur « Modifier la position » pour ${state.sport.sides[1]}.`);
+    if (b.locked) return toast(t('toast.unlockFirst', { side: sideName(1) }));
     Object.assign(b, { x: W - a.x, y: a.y, scale: a.scale });
     state.selected = 1;
     refreshUI();
@@ -889,12 +943,12 @@
     sel.replaceChildren();
     sel.disabled = !sites.length;
     if (!sites.length) {
-      sel.append(new Option('Aucun site configuré pour ce sport', ''));
+      sel.append(new Option(t('site.noneConfigured'), ''));
       return;
     }
     const groups = [
-      ['Sites', sites.filter((s) => !s.custom)],
-      ['Ajoutés dans ce navigateur', sites.filter((s) => s.custom)],
+      [t('site.groupConfig'), sites.filter((s) => !s.custom)],
+      [t('site.groupCustom'), sites.filter((s) => s.custom)],
     ];
     groups.forEach(([label, list]) => {
       if (!list.length) return;
@@ -933,8 +987,9 @@
     e.preventDefault();
     const name = els.newSiteName.value.trim();
     const file = els.newSiteLogo.files[0];
-    if (!name || !file) return;
-    if (!file.type.startsWith('image/')) return toast('Le logo doit être une image.');
+    if (!name) return toast(t('toast.siteNameMissing'));
+    if (!file) return toast(t('toast.siteLogoMissing'));
+    if (!file.type.startsWith('image/')) return toast(t('toast.siteLogoNotImage'));
     const logo = await readAsDataURL(file);
     const id = `ui-${slugify(name) || 'site'}-${Date.now().toString(36)}`;
     state.customSites.push({ id, name, logo });
@@ -943,13 +998,24 @@
     await selectSite(id);
     els.addSiteForm.reset();
     els.addSite.open = false;
-    toast(saved ? `Site « ${name} » ajouté.` : `Site « ${name} » ajouté pour cette session uniquement.`);
+    refreshUI();
+    toast(t(saved ? 'toast.siteAdded' : 'toast.siteAddedSession', { name }));
+  }
+
+  // Confirmation dans la langue de l'interface (window.confirm suivrait celle du navigateur)
+  function askConfirm(text) {
+    return new Promise((resolve) => {
+      els.confirmText.textContent = text;
+      els.confirmDialog.returnValue = '';
+      els.confirmDialog.addEventListener('close', () => resolve(els.confirmDialog.returnValue === 'ok'), { once: true });
+      els.confirmDialog.showModal();
+    });
   }
 
   async function deleteSite() {
     const site = state.site;
     if (!site || !site.custom) return;
-    if (!confirm(`Supprimer le site « ${site.name} » de ce navigateur ?`)) return;
+    if (!(await askConfirm(t('confirm.deleteSite', { name: site.name })))) return;
     state.customSites = state.customSites.filter((s) => s.id !== site.id);
     siteImages.delete(site.id);
     await store.set('sites', state.customSites);
@@ -959,7 +1025,7 @@
 
   // ---------- Aperçu & export ----------
   function defaultFilename() {
-    const [a, b] = state.logos.map((l, i) => slugify(l.name, true) || slugify(state.sport.sides[i]));
+    const [a, b] = state.logos.map((l, i) => slugify(l.name, true) || slugify(sideName(i)));
     return `${a}-vs-${b}-preview`;
   }
 
@@ -980,9 +1046,7 @@
       preview.blob = null;
       els.previewImg.setAttribute('src', '');
       els.previewError.hidden = false;
-      els.previewError.textContent = err.name === 'SecurityError'
-        ? 'Le navigateur bloque l\'export car la page est ouverte directement depuis le disque. Lancez l\'outil avec « lancer.command » (serveur local), puis réessayez.'
-        : `L'export a échoué : ${err.message}`;
+      els.previewError.textContent = err.name === 'SecurityError' ? t('export.blocked') : t('export.failed', { msg: err.message });
       els.downloadBtn.disabled = true;
       els.previewMeta.textContent = '';
       return;
@@ -995,7 +1059,7 @@
     els.previewImg.setAttribute('src', preview.url);
     els.extLabel.textContent = EXT[blob.type] || '.png';
     els.downloadBtn.disabled = false;
-    const fallback = blob.type !== MIME[fmt] ? ' · WebP non pris en charge par ce navigateur, export en PNG' : '';
+    const fallback = blob.type !== MIME[fmt] ? t('export.webpFallback') : '';
     els.previewMeta.textContent = `${W} × ${H} px · ${formatSize(blob.size)}${fallback}`;
   }
 
@@ -1019,7 +1083,7 @@
     document.body.append(a);
     a.click();
     a.remove();
-    toast(`Image téléchargée : ${name}`);
+    toast(t('toast.downloaded', { name }));
   }
 
   function openSlotPicker(i) {
@@ -1046,7 +1110,7 @@
         const l = state.logos[i];
         state.selected = i;
         if (l.locked) {
-          toast('Position validée. Cliquez sur « Modifier la position » pour la déplacer.');
+          toast(t('toast.lockedClick'));
         } else {
           drag = { i, dx: p.x - l.x, dy: p.y - l.y };
           cv.setPointerCapture(e.pointerId);
@@ -1130,7 +1194,7 @@
       const file = e.dataTransfer.files[0];
       if (!file) return;
       const side = sideOf(e);
-      if (state.logos[side].locked) return toast(`Cliquez d'abord sur « Modifier la position » pour ${state.sport.sides[side]}.`);
+      if (state.logos[side].locked) return toast(t('toast.unlockFirst', { side: sideName(side) }));
       setLogo(side, file);
     });
   }
@@ -1169,7 +1233,7 @@
       if (!file || els.dialog.open) return;
       const sel = state.logos[state.selected];
       const target = sel && !sel.locked ? state.selected : state.logos.findIndex((l) => !l.img);
-      if (target < 0) return toast('Sélectionnez le logo à remplacer avant de coller.');
+      if (target < 0) return toast(t('toast.pasteSelect'));
       e.preventDefault();
       setLogo(target, file);
     });
@@ -1202,6 +1266,7 @@
     });
     els.deleteSiteBtn.addEventListener('click', deleteSite);
     els.addSiteForm.addEventListener('submit', addSite);
+    els.newSiteLogo.addEventListener('change', refreshUI);
 
     els.previewBtn.addEventListener('click', openPreview);
     els.formatSelect.value = prefs.get('format', 'jpeg');
@@ -1217,10 +1282,31 @@
     matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener?.('change', sizeCanvas);
   }
 
+  function buildLangSelect() {
+    Object.entries(I18N.languages).forEach(([code, label]) => els.langSelect.append(new Option(label, code)));
+    els.langSelect.value = lang;
+    els.langSelect.addEventListener('change', () => setLang(els.langSelect.value));
+  }
+
+  function setLang(next) {
+    lang = I18N.dict[next] ? next : 'fr';
+    prefs.set('lang', lang);
+    document.documentElement.lang = lang;
+    els.langSelect.value = lang;
+    applyStaticTexts();
+    populateTeamMenus();
+    populateSites();
+    refreshUI();
+    draw();
+  }
+
   // ---------- Démarrage ----------
   async function init() {
     buildSportSeg();
     buildTeamCards();
+    buildLangSelect();
+    document.documentElement.lang = lang;
+    applyStaticTexts();
     bindEvents();
     sizeCanvas();
     state.customSites = (await store.get('sites')) || [];

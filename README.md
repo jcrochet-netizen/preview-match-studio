@@ -5,7 +5,9 @@ Export en 1200 × 675 px (16:9), en JPG, WebP ou PNG.
 
 ## Lancer l'outil
 
-Double-cliquez sur `lancer.command` : un petit serveur local démarre et le navigateur s'ouvre sur
+En ligne : https://jcrochet-netizen.github.io/preview-match-studio/
+
+En local : double-cliquez sur `lancer.command` : un petit serveur local démarre et le navigateur s'ouvre sur
 http://localhost:8765. Laissez la fenêtre du Terminal ouverte pendant l'utilisation.
 
 Si vous ouvrez `index.html` directement depuis le Finder, le téléchargement sera bloqué par le navigateur.
@@ -19,6 +21,9 @@ Si vous ouvrez `index.html` directement depuis le Finder, le téléchargement se
    ajustez la taille (curseur ou molette), puis cliquez sur **Valider la position**.
    La dernière position validée est réutilisée pour les visuels suivants.
 4. **Prévisualiser**, vérifiez le nom du fichier et le format, puis **Télécharger**.
+
+Langue : français, anglais ou portugais (Brésil), via le menu en haut à droite. Le choix est mémorisé ;
+à la première visite, la langue du navigateur est utilisée. Les textes sont dans `js/i18n.js`.
 
 Raccourcis : flèches = déplacer au pixel (Maj = 10 px), Alt pendant le glisser = sans magnétisme,
 Échap = désélectionner.

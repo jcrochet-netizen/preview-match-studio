@@ -10,60 +10,68 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <!-- Textes : data-i18n (texte), data-i18n-html (texte avec balises), data-i18n-attr (attributs) → js/i18n.js -->
   <header class="topbar">
     <div class="brand">
       <div class="brand-mark" aria-hidden="true">VS</div>
       <div>
         <h1>Preview Match Studio</h1>
-        <p>Visuels d'articles preview · 1200 × 675 px (16:9)</p>
+        <p data-i18n="app.subtitle">Visuels d'articles preview · 1200 × 675 px (16:9)</p>
       </div>
     </div>
     <div class="topbar-actions">
-      <div class="seg" id="sportSeg" role="tablist" aria-label="Sport"></div>
-      <button class="btn ghost" id="resetBtn" type="button">Nouveau visuel</button>
+      <div class="seg" id="sportSeg" role="tablist" aria-label="Sport" data-i18n-attr="aria-label:aria.sport"></div>
+      <select class="select lang-select" id="langSelect" aria-label="Langue" data-i18n-attr="aria-label:aria.lang"></select>
+      <button class="btn ghost" id="resetBtn" type="button" data-i18n="btn.newVisual">Nouveau visuel</button>
     </div>
   </header>
 
   <main class="layout">
     <section class="stage-col">
       <div class="stage" id="stage">
-        <canvas id="editor" tabindex="0" aria-label="Zone d'édition du visuel"></canvas>
+        <canvas id="editor" tabindex="0" aria-label="Zone d'édition du visuel" data-i18n-attr="aria-label:aria.canvas"></canvas>
         <div class="drop-hint" aria-hidden="true">
-          <div data-side="0"><span>Déposer pour<strong data-role="dropLabel">Équipe A</strong></span></div>
-          <div data-side="1"><span>Déposer pour<strong data-role="dropLabel">Équipe B</strong></span></div>
+          <div data-side="0"><span><span data-i18n="drop.for">Déposer pour</span><strong data-role="dropLabel">Équipe A</strong></span></div>
+          <div data-side="1"><span><span data-i18n="drop.for">Déposer pour</span><strong data-role="dropLabel">Équipe B</strong></span></div>
         </div>
       </div>
       <div class="stage-bar">
-        <span id="statusText">Importez les deux logos pour commencer.</span>
-        <span class="keys"><kbd>Glisser</kbd> déplacer · <kbd>Molette</kbd> taille · <kbd>←↑→↓</kbd> au pixel (<kbd>Maj</kbd> ×10) · <kbd>Alt</kbd> sans magnétisme</span>
+        <span id="statusText"></span>
+        <span class="keys" data-i18n-html="keys.hint"><kbd>Glisser</kbd> déplacer · <kbd>Molette</kbd> taille · <kbd>←↑→↓</kbd> au pixel (<kbd>Maj</kbd> ×10) · <kbd>Alt</kbd> sans magnétisme</span>
       </div>
     </section>
 
     <aside class="panel">
       <section class="card">
-        <h2><span class="step">1</span>Site</h2>
-        <select class="select" id="siteSelect" aria-label="Site"></select>
+        <h2><span class="step">1</span><span data-i18n="site.title">Site</span></h2>
+        <select class="select" id="siteSelect" aria-label="Site" data-i18n-attr="aria-label:site.title"></select>
         <small class="note" id="siteNote"></small>
-        <label class="range">Taille du logo
+        <label class="range"><span data-i18n="site.size">Taille du logo</span>
           <input type="range" id="siteSize" min="24" max="140" step="1">
           <output id="siteSizeOut"></output>
         </label>
         <div class="row-btns">
-          <button class="btn small ghost danger" id="deleteSiteBtn" type="button" hidden>Supprimer ce site</button>
+          <button class="btn small ghost danger" id="deleteSiteBtn" type="button" hidden data-i18n="site.delete">Supprimer ce site</button>
         </div>
         <details class="add-site" id="addSite">
-          <summary>＋ Ajouter un site</summary>
+          <summary data-i18n="site.add">＋ Ajouter un site</summary>
           <form id="addSiteForm" autocomplete="off">
-            <label class="field">Nom du site<input type="text" id="newSiteName" placeholder="ex. monsite.fr" required></label>
-            <label class="field">Logo (PNG/SVG transparent)<input type="file" id="newSiteLogo" accept="image/*" required></label>
-            <button class="btn small primary" type="submit">Enregistrer le site</button>
-            <small class="note">Le site est mémorisé dans ce navigateur : importez ensuite son template à l'étape 2. Pour le partager avec l'équipe, ajoutez-le dans <code>js/config.js</code>.</small>
+            <label class="field"><span data-i18n="site.name">Nom du site</span><input type="text" id="newSiteName" placeholder="ex. monsite.fr" data-i18n-attr="placeholder:site.namePlaceholder"></label>
+            <div class="field">
+              <span data-i18n="site.logo">Logo (PNG/SVG transparent)</span>
+              <div class="file-pick">
+                <label class="btn small"><span data-i18n="site.chooseFile">Choisir un fichier</span><input type="file" id="newSiteLogo" accept="image/*" hidden></label>
+                <span class="file-name" id="newSiteLogoName"></span>
+              </div>
+            </div>
+            <button class="btn small primary" type="submit" data-i18n="site.save">Enregistrer le site</button>
+            <small class="note" data-i18n-html="site.addNote">Le site est mémorisé dans ce navigateur : importez ensuite son template à l'étape 2. Pour le partager avec l'équipe, ajoutez-le dans <code>js/config.js</code>.</small>
           </form>
         </details>
       </section>
 
       <section class="card">
-        <h2><span class="step">2</span>Fond</h2>
+        <h2><span class="step">2</span><span data-i18n="bg.title">Fond</span></h2>
         <div class="template-row">
           <div class="template-thumb" id="templateThumbWrap"><img id="templateThumb" alt=""></div>
           <div class="template-info">
@@ -72,25 +80,25 @@
           </div>
         </div>
         <div class="row-btns">
-          <label class="btn small">Importer un template<input type="file" accept="image/*" id="templateInput" hidden></label>
-          <button class="btn small ghost" id="templateResetBtn" type="button" hidden>Revenir au template du site</button>
+          <label class="btn small"><span data-i18n="bg.import">Importer un template</span><input type="file" accept="image/*" id="templateInput" hidden></label>
+          <button class="btn small ghost" id="templateResetBtn" type="button" hidden data-i18n="bg.reset">Revenir au template du site</button>
         </div>
-        <label class="check"><input type="checkbox" id="vsToggle"> Ajouter « VS » au centre</label>
+        <label class="check"><input type="checkbox" id="vsToggle"> <span data-i18n="bg.vs">Ajouter « VS » au centre</span></label>
       </section>
 
       <section class="card">
-        <h2><span class="step">3</span>Logos des équipes</h2>
+        <h2><span class="step">3</span><span data-i18n="teams.title">Logos des équipes</span></h2>
         <div id="teams"></div>
         <div class="row-btns">
-          <button class="btn small ghost" id="mirrorBtn" type="button" title="Place le logo B en miroir du logo A (même hauteur, même taille)">Symétriser B par rapport à A</button>
+          <button class="btn small ghost" id="mirrorBtn" type="button" title="Place le logo B en miroir du logo A (même hauteur, même taille)" data-i18n="teams.mirror" data-i18n-attr="title:teams.mirrorTitle">Symétriser B par rapport à A</button>
         </div>
-        <label class="check"><input type="checkbox" id="shadowToggle" checked> Ombre portée sous les logos</label>
+        <label class="check"><input type="checkbox" id="shadowToggle" checked> <span data-i18n="teams.shadow">Ombre portée sous les logos</span></label>
       </section>
 
       <section class="card">
-        <h2><span class="step">4</span>Aperçu &amp; téléchargement</h2>
+        <h2><span class="step">4</span><span data-i18n="export.title">Aperçu &amp; téléchargement</span></h2>
         <ul class="checklist" id="checklist"></ul>
-        <button class="btn primary block" id="previewBtn" type="button">Prévisualiser</button>
+        <button class="btn primary block" id="previewBtn" type="button" data-i18n="export.preview">Prévisualiser</button>
       </section>
     </aside>
   </main>
@@ -101,38 +109,38 @@
         <span class="team-label"><span data-role="label"></span><em data-role="side"></em></span>
         <span class="badge" data-role="badge"></span>
       </div>
-      <select class="select club-select" data-role="club" aria-label="Choisir le club"></select>
+      <select class="select club-select" data-role="club" aria-label="Choisir le club" data-i18n-attr="aria-label:team.clubAria"></select>
       <label class="drop" data-role="drop">
         <input type="file" accept="image/*" hidden data-role="file">
         <img data-role="thumb" alt="" hidden>
         <span data-role="dropText"></span>
       </label>
-      <label class="range">Taille
+      <label class="range"><span data-i18n="team.size">Taille</span>
         <input type="range" min="20" max="250" step="1" data-role="size">
         <output data-role="sizeOut"></output>
       </label>
       <div class="row-btns">
-        <button class="btn small primary" type="button" data-role="validate">Valider la position</button>
-        <button class="btn small ghost" type="button" data-role="edit" hidden>Modifier la position</button>
-        <button class="btn small ghost" type="button" data-role="reset">Position par défaut</button>
+        <button class="btn small primary" type="button" data-role="validate" data-i18n="team.validate">Valider la position</button>
+        <button class="btn small ghost" type="button" data-role="edit" hidden data-i18n="team.edit">Modifier la position</button>
+        <button class="btn small ghost" type="button" data-role="reset" data-i18n="team.reset">Position par défaut</button>
       </div>
     </div>
   </template>
 
   <dialog id="previewDialog" class="dialog" aria-labelledby="previewTitle">
     <div class="dialog-head">
-      <h3 id="previewTitle">Aperçu final</h3>
-      <button class="icon-btn" type="button" data-close aria-label="Fermer">×</button>
+      <h3 id="previewTitle" data-i18n="dialog.title">Aperçu final</h3>
+      <button class="icon-btn" type="button" data-close aria-label="Fermer" data-i18n-attr="aria-label:dialog.close">×</button>
     </div>
     <div class="preview-img">
-      <img id="previewImg" alt="Aperçu du visuel exporté">
+      <img id="previewImg" alt="Aperçu du visuel exporté" data-i18n-attr="alt:dialog.imgAlt">
       <p class="preview-error" id="previewError" hidden></p>
     </div>
     <div class="dialog-foot">
-      <label class="field grow">Nom du fichier
+      <label class="field grow"><span data-i18n="dialog.filename">Nom du fichier</span>
         <span class="filename"><input type="text" id="filenameInput" spellcheck="false"><em id="extLabel">.jpg</em></span>
       </label>
-      <label class="field">Format
+      <label class="field"><span data-i18n="dialog.format">Format</span>
         <select class="select" id="formatSelect">
           <option value="jpeg">JPG</option>
           <option value="webp">WebP</option>
@@ -141,16 +149,27 @@
       </label>
       <span class="preview-meta" id="previewMeta"></span>
       <div class="row-btns">
-        <button class="btn ghost" type="button" data-close>Retour à l'édition</button>
-        <button class="btn primary" type="button" id="downloadBtn">Télécharger</button>
+        <button class="btn ghost" type="button" data-close data-i18n="dialog.back">Retour à l'édition</button>
+        <button class="btn primary" type="button" id="downloadBtn" data-i18n="dialog.download">Télécharger</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="confirmDialog" class="dialog dialog-sm">
+    <form method="dialog">
+      <p id="confirmText"></p>
+      <div class="row-btns">
+        <button class="btn ghost" value="cancel" data-i18n="confirm.cancel">Annuler</button>
+        <button class="btn primary" value="ok" data-i18n="confirm.delete">Supprimer</button>
+      </div>
+    </form>
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="js/config.js"></script>
   <script src="js/teams.js"></script>
+  <script src="js/i18n.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
