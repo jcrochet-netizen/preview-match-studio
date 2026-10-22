@@ -1,0 +1,22 @@
+# Déploiement Easydeploy : site statique servi par nginx derrière Traefik (nsnrouting).
+# Aucun port publié, le réseau « proxy » fait le routage. Les fichiers du dépôt sont montés
+# en lecture seule : un « git pull » sur le serveur suffit à mettre le site à jour.
+services:
+  preview-match-studio:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.preview-match-studio.rule=Host(`${TRAEFIK_HOSTNAME}`)"
+      - "traefik.http.routers.preview-match-studio.entrypoints=${TRAEFIK_ENTRYPOINT:-web}"
+      - "traefik.http.routers.preview-match-studio.tls=${TRAEFIK_TLS:-false}"
+      - "traefik.http.services.preview-match-studio.loadbalancer.server.port=80"
+    networks:
+      - proxy
+    restart: unless-stopped
+
+networks:
+  proxy:
+    external: true

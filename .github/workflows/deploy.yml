@@ -1,0 +1,32 @@
+name: Deploy to production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: SSH deploy
+    runs-on: ubuntu-latest
+    # Le même code vit aussi dans jcrochet-netizen/preview-match-studio (GitHub Pages) ;
+    # seul le dépôt northstar-network a les secrets SSH, donc lui seul déploie.
+    if: github.repository == 'northstar-network/preview-match-studio'
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            if [ ! -d "/var/www/project/preview-match-studio" ]; then
+              git clone git@github.com:northstar-network/preview-match-studio.git /var/www/project/preview-match-studio
+            fi
+            cd /var/www/project/preview-match-studio
+            git pull origin main
+            docker compose --env-file .env.prod down
+            docker compose --env-file .env.prod up -d --remove-orphans

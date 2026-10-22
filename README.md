@@ -67,3 +67,24 @@ Déposez le logo (SVG ou PNG transparent) dans `assets/teams/<sport>/`, puis ajo
 Les 30 logos NBA viennent du CDN officiel de la NBA (copiés depuis le projet BasketUSA).
 
 Les positions par défaut des logos et la taille du logo du site se règlent aussi dans `js/config.js`.
+
+## Déploiement Easydeploy
+
+Le site est aussi déployé via [easydeploy](https://github.com/northstar-network/easydeploy), en plus de
+GitHub Pages. Les deux partagent le même code : GitHub Pages sert `jcrochet-netizen/preview-match-studio`
+(remote `origin`), easydeploy déploie `northstar-network/preview-match-studio` (remote `easydeploy`,
+`git push easydeploy main`).
+
+| Fichier | Rôle |
+| --- | --- |
+| `docker-compose.yml` | nginx (image officielle) derrière Traefik (`nsnrouting`), sans port publié, réseau `proxy` |
+| `nginx.conf` | Sert le site et bloque les fichiers techniques du dépôt (`.git`, `.env.prod`, `*.yml`…) |
+| `.env.prod` | Commité : nom d'hôte et TLS seulement, aucun secret |
+| `.github/workflows/deploy.yml` | À chaque push sur `main` du dépôt easydeploy : SSH, `git pull`, `docker compose up -d` |
+
+Avant le premier déploiement : créer `northstar-network/preview-match-studio` via le gestionnaire de
+permissions (`github-permission-manager.n10.xyz`), puis renseigner les secrets du dépôt
+(Settings → Secrets → Actions) : `SSH_HOST`, `SSH_USERNAME`, `SSH_PRIVATE_KEY`, et `SSH_PORT` si ce
+n'est pas 22.
+
+URL de production : https://preview-match-studio.easydeploy.tech
