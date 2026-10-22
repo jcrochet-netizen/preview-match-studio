@@ -51,6 +51,10 @@ window.APP_CONFIG = {
     },
   ],
 
+  // Pages de test « photo joueur » (player.html, player2.html) : fond commun à tous les sites
+  // (le site choisi ne donne alors que le logo en haut à droite)
+  playerTemplate: 'assets/templates/base.png',
+
   // Logo du site : marge par rapport aux bords haut et droit, hauteur par défaut
   siteLogo: { margin: 32, defaultHeight: 56 },
 

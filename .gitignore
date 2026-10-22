@@ -6,3 +6,4 @@
 assets/templates/*
 !assets/templates/nba.png
 !assets/templates/lakers.png
+!assets/templates/base.png

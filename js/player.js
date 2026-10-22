@@ -586,8 +586,9 @@
     const sites = nbaSites();
     const site = sites.find((s) => s.id === id) || sites[0];
     if (!site) return;
+    const templatePath = CFG.playerTemplate || site.template;
     const [template, logo] = await Promise.all([
-      site.template ? loadImage(site.template).catch(() => null) : null,
+      templatePath ? loadImage(templatePath).catch(() => null) : null,
       site.logo ? loadImage(site.logo).catch(() => null) : null,
     ]);
     if (token !== siteToken) return;
