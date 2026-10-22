@@ -114,6 +114,56 @@
     return c;
   }
 
+  // Rogne le contour du joueur de « radius » pixels, en douceur (bord adouci sur ~1,5 px) :
+  // supprime le liseré de fond et les mèches fantômes laissés par le modèle. Les bords de la photo
+  // (joueur coupé par le cadre, en bas) ne sont pas rognés.
+  function erodeAlpha(src, radius) {
+    const w = src.width;
+    const h = src.height;
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const x = c.getContext('2d');
+    x.drawImage(src, 0, 0);
+    const img = x.getImageData(0, 0, w, h);
+    const p = img.data;
+    // Distance de chaque pixel au fond le plus proche (transformée de distance en deux passes)
+    const d = new Float32Array(w * h);
+    for (let i = 0; i < d.length; i++) d[i] = p[i * 4 + 3] < 128 ? 0 : 1e9;
+    const D = Math.SQRT2;
+    for (let y = 0; y < h; y++) {
+      for (let col = 0; col < w; col++) {
+        const i = y * w + col;
+        let v = d[i];
+        if (!v) continue;
+        if (col > 0) v = Math.min(v, d[i - 1] + 1);
+        if (y > 0) {
+          v = Math.min(v, d[i - w] + 1);
+          if (col > 0) v = Math.min(v, d[i - w - 1] + D);
+          if (col < w - 1) v = Math.min(v, d[i - w + 1] + D);
+        }
+        d[i] = v;
+      }
+    }
+    for (let y = h - 1; y >= 0; y--) {
+      for (let col = w - 1; col >= 0; col--) {
+        const i = y * w + col;
+        let v = d[i];
+        if (!v) continue;
+        if (col < w - 1) v = Math.min(v, d[i + 1] + 1);
+        if (y < h - 1) {
+          v = Math.min(v, d[i + w] + 1);
+          if (col < w - 1) v = Math.min(v, d[i + w + 1] + D);
+          if (col > 0) v = Math.min(v, d[i + w - 1] + D);
+        }
+        d[i] = v;
+      }
+    }
+    for (let i = 0; i < d.length; i++) p[i * 4 + 3] = Math.round(p[i * 4 + 3] * clamp((d[i] - radius + 0.5) / 1.5, 0, 1));
+    x.putImageData(img, 0, 0);
+    return c;
+  }
+
   const prefs = {
     get(key, fallback) {
       try {
@@ -176,6 +226,7 @@
     y: H, // bas du joueur
     scale: 1,
     flip: false,
+    trim: prefs.get('player:trim', 2), // pixels rognés sur le contour (image finale, joueur à 100 %)
     busy: false,
     queued: false,
     progress: null, // { frac, text }
@@ -227,9 +278,15 @@
 
   // ---------- Géométrie ----------
   // À 100 %, un joueur occupe 92 % de la hauteur (dans la limite de MAX_WIDTH), posé en bas.
+  // Échelle de la photo détourée quand le joueur est à 100 %
+  function baseScale(img) {
+    const { w, h } = imgSize(img);
+    return Math.min((H * 0.92) / h, (W * MAX_WIDTH) / w);
+  }
+
   function playerRect(p) {
     const { w, h } = imgSize(p.cutout);
-    const base = Math.min((H * 0.92) / h, (W * MAX_WIDTH) / w);
+    const base = baseScale(p.cutout);
     const dw = w * base * p.scale;
     const dh = h * base * p.scale;
     return { x: p.x - dw / 2, y: p.y - dh, w: dw, h: dh };
@@ -442,6 +499,7 @@
         size: q('size'),
         sizeOut: q('sizeOut'),
         flip: q('flip'),
+        trim: q('trim'),
         rerun: q('rerun'),
         cutoutBtn: q('cutout'),
       };
@@ -468,6 +526,15 @@
       });
       card.size.addEventListener('input', () => {
         state.players[i].scale = card.size.value / 100;
+        state.selected = i;
+        refreshUI();
+        draw();
+      });
+      card.trim.addEventListener('change', () => {
+        const p = state.players[i];
+        p.trim = Number(card.trim.value);
+        prefs.set('player:trim', p.trim);
+        applyCutout(i);
         state.selected = i;
         refreshUI();
         draw();
@@ -536,6 +603,8 @@
       card.sizeOut.textContent = pct(p.scale);
       card.flip.checked = p.flip;
       card.flip.disabled = !p.cutout;
+      card.trim.value = String(p.trim);
+      card.trim.disabled = !p.rawCutout || p.busy;
       card.rerun.hidden = !p.photo;
       card.rerun.disabled = p.busy;
       card.cutoutBtn.hidden = !p.cutout;
@@ -661,7 +730,11 @@
 
   function applyCutout(i) {
     const p = state.players[i];
-    p.cutout = p.rawCutout && (state.harden ? hardenAlpha(p.rawCutout) : p.rawCutout);
+    let c = p.rawCutout;
+    if (c && state.harden) c = hardenAlpha(c);
+    // Rognage exprimé en pixels de l'image finale, converti en pixels de la photo
+    if (c && p.trim > 0) c = erodeAlpha(c, p.trim / baseScale(c));
+    p.cutout = c;
     if (p.cutout) cards[i].after.src = p.cutout.toDataURL('image/png');
   }
 
@@ -940,7 +1013,7 @@
       setPhoto(i, file);
     });
 
-    els.engineSelect.value = prefs.get('player:engine', 'isnet_fp16');
+    els.engineSelect.value = prefs.get('player:engine', 'isnet');
     els.engineSelect.addEventListener('change', () => prefs.set('player:engine', els.engineSelect.value));
     els.hardenToggle.addEventListener('change', () => {
       state.harden = els.hardenToggle.checked;

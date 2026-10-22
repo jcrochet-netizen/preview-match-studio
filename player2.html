@@ -62,7 +62,8 @@
         <h2><span class="step">3</span><span data-i18n="player.settingsTitle">Réglages du détourage</span></h2>
         <label class="field"><span data-i18n="player.engine">Moteur de détourage</span>
           <select class="select" id="engineSelect">
-            <option value="isnet_fp16" data-i18n="player.engineStandard">Standard — meilleure qualité (≈ 80 Mo)</option>
+            <option value="isnet" data-i18n="player.engineBest">Haute qualité — pleine précision (≈ 170 Mo, recommandé)</option>
+            <option value="isnet_fp16" data-i18n="player.engineStandard">Standard — équilibré (≈ 80 Mo)</option>
             <option value="isnet_quint8" data-i18n="player.engineFast">Rapide — plus léger (≈ 40 Mo)</option>
           </select>
         </label>
@@ -105,6 +106,17 @@
         <output data-role="sizeOut"></output>
       </label>
       <label class="check"><input type="checkbox" data-role="flip"> <span data-i18n="player.flip">Retourner horizontalement</span></label>
+      <label class="inline-field" title="Retire quelques pixels sur tout le tour du joueur pour effacer les restes de fond" data-i18n-attr="title:player.trimTitle">
+        <span data-i18n="player.trim">Rogner le contour</span>
+        <select class="select" data-role="trim">
+          <option value="0" data-i18n="player.trimNone">Aucun</option>
+          <option value="1">1 px</option>
+          <option value="2">2 px</option>
+          <option value="3">3 px</option>
+          <option value="4">4 px</option>
+          <option value="5">5 px</option>
+        </select>
+      </label>
       <div class="row-btns">
         <button class="btn small ghost" type="button" data-role="rerun" hidden data-i18n="player.rerun">Relancer le détourage</button>
         <button class="btn small ghost" type="button" data-role="cutout" hidden data-i18n="player.downloadCutout">Télécharger le joueur seul (PNG)</button>

@@ -37,8 +37,11 @@ le visuel (ou le joueur seul en PNG transparent).
 sont détourées l'une après l'autre. Le sélecteur « 1 joueur / 2 joueurs » passe d'une page à l'autre.
 
 - Moteur : [IMG.LY Background Removal](https://github.com/imgly/background-removal-js) 1.7.0, exécuté
-  dans le navigateur. La photo n'est envoyée à aucun serveur. Le modèle (≈ 80 Mo, ou ≈ 40 Mo en mode
-  « Rapide ») se télécharge au premier usage puis reste en cache. Licence AGPL-3.0.
+  dans le navigateur. La photo n'est envoyée à aucun serveur. Le modèle se télécharge au premier usage
+  puis reste en cache : « Haute qualité » ≈ 170 Mo (par défaut, contours plus nets), « Standard »
+  ≈ 80 Mo, « Rapide » ≈ 40 Mo. Licence AGPL-3.0.
+- « Rogner le contour » (0 à 5 px, 2 px par défaut, réglable par joueur) retire quelques pixels sur
+  tout le tour du joueur pour effacer le liseré de fond et les mèches fantômes.
 - L'option « Rendre le joueur bien opaque » comble les zones que le modèle laisse semi-transparentes
   (ex. maillot jaune sur parquet jaune).
 - Préférez des photos où le joueur n'est coupé qu'en bas du cadre : une coupe sur le côté reste visible.
