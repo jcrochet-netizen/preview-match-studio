@@ -28,11 +28,13 @@ Langue : français, anglais ou portugais (Brésil), via le menu en haut à droit
 Raccourcis : flèches = déplacer au pixel (Maj = 10 px), Alt pendant le glisser = sans magnétisme,
 Échap = désélectionner.
 
-## Test : photo de joueur détourée par IA (`player.html`)
+## Test : photo(s) de joueur détourée(s) par IA (`player.html`, `player2.html`)
 
 Page de test : on importe la photo d'un joueur, une IA isole le joueur du décor et le pose sur le
 template du site choisi. On peut ensuite le déplacer, le redimensionner, le retourner, puis exporter
 le visuel (ou le joueur seul en PNG transparent).
+`player2.html` fait la même chose avec deux joueurs (un de chaque côté du VS) ; les deux photos
+sont détourées l'une après l'autre. Le sélecteur « 1 joueur / 2 joueurs » passe d'une page à l'autre.
 
 - Moteur : [IMG.LY Background Removal](https://github.com/imgly/background-removal-js) 1.7.0, exécuté
   dans le navigateur. La photo n'est envoyée à aucun serveur. Le modèle (≈ 80 Mo, ou ≈ 40 Mo en mode

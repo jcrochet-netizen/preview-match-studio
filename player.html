@@ -9,8 +9,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
-  <!-- Page de test : photo d'un joueur détourée par IA (dans le navigateur) et posée sur le template -->
+<body data-players="1">
+  <!-- Page de test : photo(s) de joueur détourée(s) par IA (dans le navigateur) et posée(s) sur le template.
+       Logique commune : js/player.js ; data-players donne le nombre de joueurs. -->
   <header class="topbar">
     <div class="brand">
       <div class="brand-mark" aria-hidden="true">VS</div>
@@ -21,6 +22,10 @@
     </div>
     <div class="topbar-actions">
       <a class="btn ghost" href="index.html" data-i18n="player.back">← Visuels de match</a>
+      <nav class="seg" aria-label="Nombre de joueurs" data-i18n-attr="aria-label:player.navAria">
+        <a href="player.html" aria-current="page" data-i18n="player.nav1">1 joueur</a>
+        <a href="player2.html"  data-i18n="player.nav2">2 joueurs</a>
+      </nav>
       <select class="select lang-select" id="langSelect" aria-label="Langue" data-i18n-attr="aria-label:aria.lang"></select>
       <button class="btn ghost" id="resetBtn" type="button" data-i18n="player.new">Nouvelle photo</button>
     </div>
@@ -50,45 +55,20 @@
 
       <section class="card">
         <h2><span class="step">2</span><span data-i18n="player.photoTitle">Photo du joueur</span></h2>
-        <label class="drop" id="photoDrop">
-          <input type="file" accept="image/*" hidden id="photoInput">
-          <img id="photoThumb" alt="" hidden>
-          <span id="photoText"></span>
-        </label>
-        <label class="field engine-field"><span data-i18n="player.engine">Moteur de détourage</span>
+        <div id="players"></div>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">3</span><span data-i18n="player.settingsTitle">Réglages du détourage</span></h2>
+        <label class="field"><span data-i18n="player.engine">Moteur de détourage</span>
           <select class="select" id="engineSelect">
             <option value="isnet_fp16" data-i18n="player.engineStandard">Standard — meilleure qualité (≈ 80 Mo)</option>
             <option value="isnet_quint8" data-i18n="player.engineFast">Rapide — plus léger (≈ 40 Mo)</option>
           </select>
         </label>
         <label class="check"><input type="checkbox" id="hardenToggle" checked> <span data-i18n="player.harden">Rendre le joueur bien opaque (corrige les zones semi-transparentes)</span></label>
-        <div class="progress" id="progress" hidden>
-          <div class="progress-bar" id="progressBar"></div>
-        </div>
-        <small class="note" id="engineNote"></small>
-        <div class="compare" id="compare" hidden>
-          <figure><img id="beforeImg" alt=""><figcaption data-i18n="player.before">Original</figcaption></figure>
-          <figure><img id="afterImg" alt=""><figcaption data-i18n="player.after">Détouré</figcaption></figure>
-        </div>
-        <div class="row-btns">
-          <button class="btn small ghost" id="rerunBtn" type="button" hidden data-i18n="player.rerun">Relancer le détourage</button>
-          <button class="btn small ghost" id="cutoutBtn" type="button" hidden data-i18n="player.downloadCutout">Télécharger le joueur seul (PNG)</button>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2><span class="step">3</span><span data-i18n="player.placeTitle">Position</span></h2>
-        <div class="seg seg-block" id="anchorSeg" role="group" aria-label="Position" data-i18n-attr="aria-label:player.placeTitle">
-          <button type="button" data-anchor="left" data-i18n="player.left">À gauche</button>
-          <button type="button" data-anchor="center" data-i18n="player.center">Au centre</button>
-          <button type="button" data-anchor="right" data-i18n="player.right">À droite</button>
-        </div>
-        <label class="range"><span data-i18n="team.size">Taille</span>
-          <input type="range" id="sizeRange" min="20" max="250" step="1" value="100">
-          <output id="sizeOut"></output>
-        </label>
-        <label class="check"><input type="checkbox" id="flipToggle"> <span data-i18n="player.flip">Retourner horizontalement</span></label>
         <label class="check"><input type="checkbox" id="shadowToggle" checked> <span data-i18n="player.shadow">Ombre portée sous le joueur</span></label>
+        <small class="note" data-i18n="player.engineIntro">L'IA tourne dans votre navigateur : la photo n'est envoyée à aucun serveur. Le modèle se télécharge au premier usage, puis reste en cache.</small>
       </section>
 
       <section class="card">
@@ -97,6 +77,40 @@
       </section>
     </aside>
   </main>
+
+  <template id="playerTpl">
+    <div class="team player-card">
+      <div class="team-head">
+        <span class="team-label"><span data-role="label"></span><em data-role="side"></em></span>
+        <span class="badge" data-role="badge"></span>
+      </div>
+      <label class="drop" data-role="drop">
+        <input type="file" accept="image/*" hidden data-role="file">
+        <img data-role="thumb" alt="" hidden>
+        <span data-role="dropText"></span>
+      </label>
+      <div class="progress" data-role="progress" hidden><div class="progress-bar" data-role="bar"></div></div>
+      <small class="note" data-role="note"></small>
+      <div class="compare" data-role="compare" hidden>
+        <figure><img data-role="before" alt=""><figcaption data-i18n="player.before">Original</figcaption></figure>
+        <figure><img data-role="after" alt=""><figcaption data-i18n="player.after">Détouré</figcaption></figure>
+      </div>
+      <div class="seg seg-block player-anchors" data-role="anchors" role="group" aria-label="Position" data-i18n-attr="aria-label:player.placeTitle">
+        <button type="button" data-anchor="left" data-i18n="player.left">À gauche</button>
+        <button type="button" data-anchor="center" data-i18n="player.center">Au centre</button>
+        <button type="button" data-anchor="right" data-i18n="player.right">À droite</button>
+      </div>
+      <label class="range"><span data-i18n="team.size">Taille</span>
+        <input type="range" min="20" max="250" step="1" value="100" data-role="size">
+        <output data-role="sizeOut"></output>
+      </label>
+      <label class="check"><input type="checkbox" data-role="flip"> <span data-i18n="player.flip">Retourner horizontalement</span></label>
+      <div class="row-btns">
+        <button class="btn small ghost" type="button" data-role="rerun" hidden data-i18n="player.rerun">Relancer le détourage</button>
+        <button class="btn small ghost" type="button" data-role="cutout" hidden data-i18n="player.downloadCutout">Télécharger le joueur seul (PNG)</button>
+      </div>
+    </div>
+  </template>
 
   <dialog id="previewDialog" class="dialog" aria-labelledby="previewTitle">
     <div class="dialog-head">

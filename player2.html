@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deux joueurs — Preview Match Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-players="2">
+  <!-- Page de test : photo(s) de joueur détourée(s) par IA (dans le navigateur) et posée(s) sur le template.
+       Logique commune : js/player.js ; data-players donne le nombre de joueurs. -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">VS</div>
+      <div>
+        <h1>Preview Match Studio</h1>
+        <p data-i18n="player2.subtitle">Test : deux joueurs détourés par IA · 1200 × 675 px</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a class="btn ghost" href="index.html" data-i18n="player.back">← Visuels de match</a>
+      <nav class="seg" aria-label="Nombre de joueurs" data-i18n-attr="aria-label:player.navAria">
+        <a href="player.html"  data-i18n="player.nav1">1 joueur</a>
+        <a href="player2.html" aria-current="page" data-i18n="player.nav2">2 joueurs</a>
+      </nav>
+      <select class="select lang-select" id="langSelect" aria-label="Langue" data-i18n-attr="aria-label:aria.lang"></select>
+      <button class="btn ghost" id="resetBtn" type="button" data-i18n="player.new">Nouvelle photo</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage-col">
+      <div class="stage" id="stage">
+        <canvas id="editor" tabindex="0" aria-label="Zone d'édition du visuel" data-i18n-attr="aria-label:aria.canvas"></canvas>
+        <div class="stage-busy" id="stageBusy" hidden>
+          <div class="spinner" aria-hidden="true"></div>
+          <span id="stageBusyText"></span>
+        </div>
+      </div>
+      <div class="stage-bar">
+        <span id="statusText"></span>
+        <span class="keys" data-i18n-html="player.keys"><kbd>Glisser</kbd> déplacer · <kbd>Molette</kbd> taille · <kbd>←↑→↓</kbd> au pixel (<kbd>Maj</kbd> ×10)</span>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <section class="card">
+        <h2><span class="step">1</span><span data-i18n="site.title">Site</span></h2>
+        <select class="select" id="siteSelect" aria-label="Site" data-i18n-attr="aria-label:site.title"></select>
+        <small class="note" data-i18n="player.siteNote">Le site détermine le template et le logo en haut à droite.</small>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">2</span><span data-i18n="player2.photosTitle">Photos des joueurs</span></h2>
+        <div id="players"></div>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">3</span><span data-i18n="player.settingsTitle">Réglages du détourage</span></h2>
+        <label class="field"><span data-i18n="player.engine">Moteur de détourage</span>
+          <select class="select" id="engineSelect">
+            <option value="isnet_fp16" data-i18n="player.engineStandard">Standard — meilleure qualité (≈ 80 Mo)</option>
+            <option value="isnet_quint8" data-i18n="player.engineFast">Rapide — plus léger (≈ 40 Mo)</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" id="hardenToggle" checked> <span data-i18n="player.harden">Rendre le joueur bien opaque (corrige les zones semi-transparentes)</span></label>
+        <label class="check"><input type="checkbox" id="shadowToggle" checked> <span data-i18n="player.shadow">Ombre portée sous le joueur</span></label>
+        <small class="note" data-i18n="player.engineIntro">L'IA tourne dans votre navigateur : la photo n'est envoyée à aucun serveur. Le modèle se télécharge au premier usage, puis reste en cache.</small>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">4</span><span data-i18n="export.title">Aperçu &amp; téléchargement</span></h2>
+        <button class="btn primary block" id="previewBtn" type="button" data-i18n="export.preview">Prévisualiser</button>
+      </section>
+    </aside>
+  </main>
+
+  <template id="playerTpl">
+    <div class="team player-card">
+      <div class="team-head">
+        <span class="team-label"><span data-role="label"></span><em data-role="side"></em></span>
+        <span class="badge" data-role="badge"></span>
+      </div>
+      <label class="drop" data-role="drop">
+        <input type="file" accept="image/*" hidden data-role="file">
+        <img data-role="thumb" alt="" hidden>
+        <span data-role="dropText"></span>
+      </label>
+      <div class="progress" data-role="progress" hidden><div class="progress-bar" data-role="bar"></div></div>
+      <small class="note" data-role="note"></small>
+      <div class="compare" data-role="compare" hidden>
+        <figure><img data-role="before" alt=""><figcaption data-i18n="player.before">Original</figcaption></figure>
+        <figure><img data-role="after" alt=""><figcaption data-i18n="player.after">Détouré</figcaption></figure>
+      </div>
+      <div class="seg seg-block player-anchors" data-role="anchors" role="group" aria-label="Position" data-i18n-attr="aria-label:player.placeTitle">
+        <button type="button" data-anchor="left" data-i18n="player.left">À gauche</button>
+        <button type="button" data-anchor="center" data-i18n="player.center">Au centre</button>
+        <button type="button" data-anchor="right" data-i18n="player.right">À droite</button>
+      </div>
+      <label class="range"><span data-i18n="team.size">Taille</span>
+        <input type="range" min="20" max="250" step="1" value="100" data-role="size">
+        <output data-role="sizeOut"></output>
+      </label>
+      <label class="check"><input type="checkbox" data-role="flip"> <span data-i18n="player.flip">Retourner horizontalement</span></label>
+      <div class="row-btns">
+        <button class="btn small ghost" type="button" data-role="rerun" hidden data-i18n="player.rerun">Relancer le détourage</button>
+        <button class="btn small ghost" type="button" data-role="cutout" hidden data-i18n="player.downloadCutout">Télécharger le joueur seul (PNG)</button>
+      </div>
+    </div>
+  </template>
+
+  <dialog id="previewDialog" class="dialog" aria-labelledby="previewTitle">
+    <div class="dialog-head">
+      <h3 id="previewTitle" data-i18n="dialog.title">Aperçu final</h3>
+      <button class="icon-btn" type="button" data-close aria-label="Fermer" data-i18n-attr="aria-label:dialog.close">×</button>
+    </div>
+    <div class="preview-img">
+      <img id="previewImg" alt="Aperçu du visuel exporté" data-i18n-attr="alt:dialog.imgAlt">
+      <p class="preview-error" id="previewError" hidden></p>
+    </div>
+    <div class="dialog-foot">
+      <label class="field grow"><span data-i18n="dialog.filename">Nom du fichier</span>
+        <span class="filename"><input type="text" id="filenameInput" spellcheck="false"><em id="extLabel">.jpg</em></span>
+      </label>
+      <label class="field"><span data-i18n="dialog.format">Format</span>
+        <select class="select" id="formatSelect">
+          <option value="jpeg">JPG</option>
+          <option value="webp">WebP</option>
+          <option value="png">PNG</option>
+        </select>
+      </label>
+      <span class="preview-meta" id="previewMeta"></span>
+      <div class="row-btns">
+        <button class="btn ghost" type="button" data-close data-i18n="dialog.back">Retour à l'édition</button>
+        <button class="btn primary" type="button" id="downloadBtn" data-i18n="dialog.download">Télécharger</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/player.js"></script>
+</body>
+</html>

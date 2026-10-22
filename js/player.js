@@ -1,4 +1,5 @@
-/* Preview Match Studio — page de test : photo de joueur détourée par IA et posée sur le template */
+/* Preview Match Studio — pages de test : photo(s) de joueur détourée(s) par IA et posée(s) sur le template.
+   Le nombre de joueurs vient de la page : <body data-players="1"> (player.html) ou "2" (player2.html). */
 (() => {
   'use strict';
 
@@ -7,6 +8,7 @@
   const W = CFG.width;
   const H = CFG.height;
   const SPORT = 'nba';
+  const COUNT = Math.min(2, Math.max(1, Number(document.body.dataset.players) || 1));
   // Moteur de détourage : IMG.LY Background Removal (licence AGPL), exécuté dans le navigateur.
   // Le modèle est téléchargé depuis le CDN d'IMG.LY au premier usage, puis gardé en cache.
   const ENGINE_URL = 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm';
@@ -18,6 +20,9 @@
   const SNAP = 10;
   // Position horizontale (centre du joueur) des boutons « À gauche / Au centre / À droite »
   const ANCHORS = { left: 330, center: W / 2, right: W - 330 };
+  // Position de départ de chaque joueur, et largeur maximale à 100 % (en part de l'image)
+  const START = COUNT === 1 ? ['left'] : ['left', 'right'];
+  const MAX_WIDTH = COUNT === 1 ? 0.6 : 0.45;
 
   // ---------- Utilitaires ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -157,31 +162,40 @@
   const formatSize = (bytes) => (bytes < 1048576
     ? t('size.kb', { n: num(Math.round(bytes / 1024), 0) })
     : t('size.mb', { n: num(bytes / 1048576, 1) }));
+  // Clé propre à la page à deux joueurs quand elle existe (« player2.xxx »), sinon « player.xxx »
+  const pageKey = (key) => (COUNT === 2 && I18N.dict.fr[`player2.${key}`] ? `player2.${key}` : `player.${key}`);
+  const playerLabel = (i) => (COUNT === 1 ? t('player.single') : t('player.slot', { n: i + 1 }));
 
   // ---------- État ----------
-  const state = {
-    site: null,
-    template: null,
+  const makePlayer = (i) => ({
     photo: null, // { file, name, url }
     rawCutout: null, // canvas du joueur détouré et recadré, tel que rendu par le modèle
     cutout: null, // version affichée (renforcée ou non)
     placed: false, // position déjà choisie pour cette photo
-    x: ANCHORS.left, // centre horizontal du joueur
+    x: ANCHORS[START[i]], // centre horizontal
     y: H, // bas du joueur
     scale: 1,
-    flip: prefs.get('player:flip', false),
+    flip: false,
+    busy: false,
+    queued: false,
+    progress: null, // { frac, text }
+    message: null, // { key, params, warn } : traduit à l'affichage
+    token: 0,
+  });
+
+  const state = {
+    site: null,
+    template: null,
+    players: Array.from({ length: COUNT }, (_, i) => makePlayer(i)),
+    selected: -1,
+    hover: -1,
     shadow: prefs.get('player:shadow', true),
     harden: prefs.get('player:harden', true),
-    busy: false,
-    progress: null, // { frac, text }
-    message: null, // { key, params, warn } : traduit à l'affichage (suit la langue choisie)
-    selected: false,
-    hover: false,
     guides: [],
   };
   let drag = null;
-  let runToken = 0;
   let siteToken = 0;
+  let queue = Promise.resolve(); // les détourages passent l'un après l'autre
   const preview = { url: '', blob: null };
 
   const els = {
@@ -193,24 +207,9 @@
     langSelect: $('#langSelect'),
     resetBtn: $('#resetBtn'),
     siteSelect: $('#siteSelect'),
-    photoDrop: $('#photoDrop'),
-    photoInput: $('#photoInput'),
-    photoThumb: $('#photoThumb'),
-    photoText: $('#photoText'),
+    players: $('#players'),
     engineSelect: $('#engineSelect'),
     hardenToggle: $('#hardenToggle'),
-    progress: $('#progress'),
-    progressBar: $('#progressBar'),
-    engineNote: $('#engineNote'),
-    compare: $('#compare'),
-    beforeImg: $('#beforeImg'),
-    afterImg: $('#afterImg'),
-    rerunBtn: $('#rerunBtn'),
-    cutoutBtn: $('#cutoutBtn'),
-    anchorSeg: $('#anchorSeg'),
-    sizeRange: $('#sizeRange'),
-    sizeOut: $('#sizeOut'),
-    flipToggle: $('#flipToggle'),
     shadowToggle: $('#shadowToggle'),
     previewBtn: $('#previewBtn'),
     dialog: $('#previewDialog'),
@@ -224,37 +223,58 @@
     toast: $('#toast'),
   };
   const ctx = els.canvas.getContext('2d');
+  const cards = [];
 
   // ---------- Géométrie ----------
-  // À 100 %, le joueur occupe 92 % de la hauteur (sans dépasser 60 % de la largeur), posé en bas.
-  function playerRect() {
-    const { w, h } = imgSize(state.cutout);
-    const base = Math.min((H * 0.92) / h, (W * 0.6) / w);
-    const dw = w * base * state.scale;
-    const dh = h * base * state.scale;
-    return { x: state.x - dw / 2, y: state.y - dh, w: dw, h: dh };
+  // À 100 %, un joueur occupe 92 % de la hauteur (dans la limite de MAX_WIDTH), posé en bas.
+  function playerRect(p) {
+    const { w, h } = imgSize(p.cutout);
+    const base = Math.min((H * 0.92) / h, (W * MAX_WIDTH) / w);
+    const dw = w * base * p.scale;
+    const dh = h * base * p.scale;
+    return { x: p.x - dw / 2, y: p.y - dh, w: dw, h: dh };
   }
 
   // Centre horizontal pour « À gauche / Au centre / À droite », sans faire déborder le joueur.
-  function anchorX(anchor) {
-    if (anchor === 'center' || !state.cutout) return ANCHORS[anchor];
-    const half = Math.min(playerRect().w / 2, W / 2);
+  function anchorX(p, anchor) {
+    if (anchor === 'center' || !p.cutout) return ANCHORS[anchor];
+    const half = Math.min(playerRect(p).w / 2, W / 2);
     return anchor === 'left' ? Math.max(ANCHORS.left, half) : Math.min(ANCHORS.right, W - half);
   }
 
+  function slotRect(i) {
+    const s = 260;
+    return { x: ANCHORS[START[i]] - s / 2, y: (H - s) / 2, w: s, h: s };
+  }
+
   const inRect = (p, r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
-  const hitPlayer = (p) => !!state.cutout && inRect(p, playerRect());
+
+  // Ordre d'affichage : le joueur sélectionné passe devant
+  function drawOrder() {
+    const order = state.players.map((_, i) => i);
+    return state.selected >= 0 ? [...order.filter((i) => i !== state.selected), state.selected] : order;
+  }
+
+  function hitPlayer(pt) {
+    return [...drawOrder()].reverse().find((i) => state.players[i].cutout && inRect(pt, playerRect(state.players[i]))) ?? -1;
+  }
+
+  const hitSlot = (pt) => state.players.findIndex((p, i) => !p.cutout && !p.busy && inRect(pt, slotRect(i)));
 
   function toLogical(e) {
     const r = els.canvas.getBoundingClientRect();
     return { x: ((e.clientX - r.left) * W) / r.width, y: ((e.clientY - r.top) * H) / r.height };
   }
 
-  // Magnétisme : bas de l'image, centre et positions gauche / droite
-  function snap(x, y) {
+  // Magnétisme : bas de l'image, positions gauche / centre / droite, symétrie avec l'autre joueur
+  function snap(i, x, y) {
+    const p = state.players[i];
     const guides = [];
     if (Math.abs(y - H) < SNAP) y = H;
-    const target = Object.keys(ANCHORS).map(anchorX).find((ax) => Math.abs(x - ax) < SNAP);
+    const targets = Object.keys(ANCHORS).map((a) => anchorX(p, a));
+    const other = state.players[1 - i];
+    if (COUNT === 2 && other.cutout) targets.push(W - other.x);
+    const target = targets.find((tx) => Math.abs(x - tx) < SNAP);
     if (target !== undefined) {
       x = target;
       guides.push({ x });
@@ -279,23 +299,25 @@
       c.fillRect(0, 0, W, H);
     }
 
-    if (state.cutout) {
-      const r = playerRect();
+    drawOrder().forEach((i) => {
+      const p = state.players[i];
+      if (!p.cutout) return;
+      const r = playerRect(p);
       c.save();
       if (state.shadow) {
         c.shadowColor = 'rgba(0, 0, 0, 0.45)';
         c.shadowBlur = 36 * k;
         c.shadowOffsetY = 14 * k;
       }
-      if (state.flip) {
+      if (p.flip) {
         c.translate(r.x + r.w, r.y);
         c.scale(-1, 1);
-        c.drawImage(state.cutout, 0, 0, r.w, r.h);
+        c.drawImage(p.cutout, 0, 0, r.w, r.h);
       } else {
-        c.drawImage(state.cutout, r.x, r.y, r.w, r.h);
+        c.drawImage(p.cutout, r.x, r.y, r.w, r.h);
       }
       c.restore();
-    }
+    });
 
     drawSiteLogo(c);
     if (editor) drawOverlay(c);
@@ -333,33 +355,35 @@
   function drawOverlay(c) {
     const u = W / (els.canvas.clientWidth || W);
     c.save();
-    if (!state.cutout && !state.busy) {
-      // Cadre ajusté à la longueur du texte (variable selon la langue)
-      c.font = `700 ${Math.min(16 * u, 26)}px Inter, system-ui, sans-serif`;
-      const bw = Math.min(W - 80, c.measureText(t('player.canvasHint')).width + 80);
-      const bh = 120;
-      const x = (W - bw) / 2;
-      const y = (H - bh) / 2;
-      c.setLineDash([10 * u, 8 * u]);
-      c.lineWidth = 2 * u;
-      c.strokeStyle = 'rgba(20, 24, 33, 0.45)';
-      c.fillStyle = 'rgba(255, 255, 255, 0.55)';
-      roundRect(c, x, y, bw, bh, 18);
-      c.fill();
-      c.stroke();
-      c.setLineDash([]);
-      c.fillStyle = 'rgba(20, 24, 33, 0.8)';
-      c.textAlign = 'center';
-      c.textBaseline = 'middle';
-      c.fillText(t('player.canvasHint'), W / 2, H / 2);
-    }
-    if (state.cutout && (state.selected || state.hover)) {
-      const r = playerRect();
-      c.setLineDash([7 * u, 5 * u]);
-      c.lineWidth = 2 * u;
-      c.strokeStyle = state.selected ? '#ff6b1f' : 'rgba(20, 24, 33, 0.5)';
-      c.strokeRect(r.x, r.y, r.w, r.h);
-    }
+    state.players.forEach((p, i) => {
+      if (!p.cutout && !p.busy) {
+        // Emplacement vide : cliquer ou déposer la photo
+        const r = slotRect(i);
+        c.setLineDash([10 * u, 8 * u]);
+        c.lineWidth = 2 * u;
+        c.strokeStyle = 'rgba(20, 24, 33, 0.45)';
+        c.fillStyle = 'rgba(255, 255, 255, 0.55)';
+        roundRect(c, r.x, r.y, r.w, r.h, 18);
+        c.fill();
+        c.stroke();
+        c.setLineDash([]);
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        const fs = Math.min(16 * u, 28);
+        c.fillStyle = 'rgba(20, 24, 33, 0.85)';
+        c.font = `700 ${fs}px Inter, system-ui, sans-serif`;
+        c.fillText(`+ ${playerLabel(i)}`, r.x + r.w / 2, r.y + r.h / 2 - fs * 0.6);
+        c.fillStyle = 'rgba(20, 24, 33, 0.6)';
+        c.font = `500 ${fs * 0.68}px Inter, system-ui, sans-serif`;
+        c.fillText(t('player.slotHint'), r.x + r.w / 2, r.y + r.h / 2 + fs * 0.75);
+      } else if (p.cutout && (state.selected === i || state.hover === i)) {
+        const r = playerRect(p);
+        c.setLineDash([7 * u, 5 * u]);
+        c.lineWidth = 2 * u;
+        c.strokeStyle = state.selected === i ? '#ff6b1f' : 'rgba(20, 24, 33, 0.5)';
+        c.strokeRect(r.x, r.y, r.w, r.h);
+      }
+    });
     if (state.guides.length) {
       c.setLineDash([6 * u, 5 * u]);
       c.lineWidth = 1.5 * u;
@@ -387,62 +411,159 @@
   }
 
   function sizeCanvas() {
-    const k = clamp(window.devicePixelRatio || 1, 1, 2);
+    const k = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
     els.canvas.width = Math.round(W * k);
     els.canvas.height = Math.round(H * k);
     draw();
   }
 
+  // ---------- Cartes des joueurs ----------
+  function buildCards() {
+    const tpl = $('#playerTpl');
+    state.players.forEach((p, i) => {
+      const root = tpl.content.firstElementChild.cloneNode(true);
+      const q = (role) => root.querySelector(`[data-role="${role}"]`);
+      const card = {
+        root,
+        label: q('label'),
+        side: q('side'),
+        badge: q('badge'),
+        drop: q('drop'),
+        file: q('file'),
+        thumb: q('thumb'),
+        dropText: q('dropText'),
+        progress: q('progress'),
+        bar: q('bar'),
+        note: q('note'),
+        compare: q('compare'),
+        before: q('before'),
+        after: q('after'),
+        anchors: q('anchors'),
+        size: q('size'),
+        sizeOut: q('sizeOut'),
+        flip: q('flip'),
+        rerun: q('rerun'),
+        cutoutBtn: q('cutout'),
+      };
+      card.file.addEventListener('change', () => {
+        const file = card.file.files[0];
+        card.file.value = '';
+        if (file) setPhoto(i, file);
+      });
+      card.drop.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        card.drop.classList.add('is-over');
+      });
+      card.drop.addEventListener('dragleave', () => card.drop.classList.remove('is-over'));
+      card.drop.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        card.drop.classList.remove('is-over');
+        if (!state.players[i].busy && e.dataTransfer.files[0]) setPhoto(i, e.dataTransfer.files[0]);
+      });
+      card.anchors.addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-anchor]');
+        if (b) setAnchor(i, b.dataset.anchor);
+      });
+      card.size.addEventListener('input', () => {
+        state.players[i].scale = card.size.value / 100;
+        state.selected = i;
+        refreshUI();
+        draw();
+      });
+      card.flip.addEventListener('change', () => {
+        state.players[i].flip = card.flip.checked;
+        state.selected = i;
+        refreshUI();
+        draw();
+      });
+      card.rerun.addEventListener('click', () => runCutout(i));
+      card.cutoutBtn.addEventListener('click', () => downloadCutout(i));
+      root.addEventListener('pointerdown', (e) => {
+        if (state.players[i].cutout && !e.target.closest('button, input, select, label')) {
+          state.selected = i;
+          refreshUI();
+          draw();
+        }
+      });
+      els.players.append(root);
+      cards.push(card);
+    });
+  }
+
   // ---------- Interface ----------
   function refreshUI() {
-    const hasPhoto = !!state.photo;
-    const photoSrc = hasPhoto ? state.photo.url : '';
-    if (els.photoThumb.getAttribute('src') !== photoSrc) els.photoThumb.setAttribute('src', photoSrc);
-    els.photoThumb.hidden = !hasPhoto;
-    els.photoText.textContent = hasPhoto ? t('player.dropReplace', { name: state.photo.name }) : t('player.dropEmpty');
-    els.photoDrop.classList.toggle('is-disabled', state.busy);
+    state.players.forEach((p, i) => {
+      const card = cards[i];
+      card.label.textContent = playerLabel(i);
+      card.side.textContent = COUNT === 2 ? t(START[i] === 'left' ? 'team.left' : 'team.right') : '';
+      card.root.classList.toggle('is-selected', state.selected === i && !!p.cutout);
 
-    els.progress.hidden = !state.busy;
-    if (state.busy && state.progress) {
-      const indeterminate = state.progress.frac == null;
-      els.progress.classList.toggle('is-indeterminate', indeterminate);
-      els.progressBar.style.width = indeterminate ? '' : `${Math.round(state.progress.frac * 100)}%`;
-    }
-    const note = state.busy && state.progress ? { text: state.progress.text }
-      : state.message ? { text: t(state.message.key, localParams(state.message.params)), warn: state.message.warn }
-      : { text: t('player.engineIntro') };
-    els.engineNote.className = `note${note.warn ? ' warn' : ''}`;
-    els.engineNote.textContent = note.text;
-    els.stageBusy.hidden = !state.busy;
-    els.stageBusyText.textContent = state.progress ? state.progress.text : '';
+      const photoSrc = p.photo ? p.photo.url : '';
+      if (card.thumb.getAttribute('src') !== photoSrc) card.thumb.setAttribute('src', photoSrc);
+      card.thumb.hidden = !p.photo;
+      card.dropText.textContent = p.photo ? t('player.dropReplace', { name: p.photo.name }) : t('player.dropEmpty');
+      card.drop.classList.toggle('is-disabled', p.busy);
 
-    els.compare.hidden = !hasPhoto;
-    els.afterImg.hidden = !state.cutout;
-    if (els.beforeImg.getAttribute('src') !== photoSrc) els.beforeImg.setAttribute('src', photoSrc);
+      const [cls, badge] = p.busy ? ['warn', p.queued ? 'player.badgeQueued' : 'player.badgeBusy']
+        : p.cutout ? ['ok', 'player.badgeReady']
+        : p.message && p.message.warn ? ['warn', 'player.badgeError'] : ['', 'player.badgeEmpty'];
+      card.badge.className = `badge ${cls}`;
+      card.badge.textContent = t(badge);
 
-    els.rerunBtn.hidden = !hasPhoto;
-    els.rerunBtn.disabled = state.busy;
-    els.cutoutBtn.hidden = !state.cutout;
-    els.engineSelect.disabled = state.busy;
+      card.progress.hidden = !p.busy;
+      if (p.busy && p.progress) {
+        const indeterminate = p.progress.frac == null;
+        card.progress.classList.toggle('is-indeterminate', indeterminate);
+        card.bar.style.width = indeterminate ? '' : `${Math.round(p.progress.frac * 100)}%`;
+      }
+      const note = p.busy && p.progress ? { text: p.progress.text }
+        : p.message ? { text: t(p.message.key, localParams(p.message.params)), warn: p.message.warn } : null;
+      card.note.className = `note${note && note.warn ? ' warn' : ''}`;
+      card.note.textContent = note ? note.text : '';
 
-    els.anchorSeg.querySelectorAll('button').forEach((b) => {
-      b.disabled = !state.cutout;
-      b.setAttribute('aria-pressed', String(!!state.cutout && Math.abs(state.x - anchorX(b.dataset.anchor)) < 1));
+      card.compare.hidden = !p.photo;
+      if (card.before.getAttribute('src') !== photoSrc) card.before.setAttribute('src', photoSrc);
+      card.after.hidden = !p.cutout;
+
+      card.anchors.querySelectorAll('button').forEach((b) => {
+        b.disabled = !p.cutout;
+        b.setAttribute('aria-pressed', String(!!p.cutout && Math.abs(p.x - anchorX(p, b.dataset.anchor)) < 1));
+      });
+      card.size.disabled = !p.cutout;
+      card.size.value = Math.round(p.scale * 100);
+      card.sizeOut.textContent = pct(p.scale);
+      card.flip.checked = p.flip;
+      card.flip.disabled = !p.cutout;
+      card.rerun.hidden = !p.photo;
+      card.rerun.disabled = p.busy;
+      card.cutoutBtn.hidden = !p.cutout;
     });
-    els.sizeRange.disabled = !state.cutout;
-    els.sizeRange.value = Math.round(state.scale * 100);
-    els.sizeOut.textContent = pct(state.scale);
-    els.flipToggle.checked = state.flip;
+
+    const anyBusy = state.players.some((p) => p.busy);
+    els.engineSelect.disabled = anyBusy;
     els.hardenToggle.checked = state.harden;
-    els.hardenToggle.disabled = state.busy;
+    els.hardenToggle.disabled = anyBusy;
     els.shadowToggle.checked = state.shadow;
 
-    const ready = !!state.cutout && !state.busy;
-    els.previewBtn.disabled = !ready;
-    els.previewBtn.title = ready ? '' : t('player.disabledTitle');
+    // Bandeau sur l'image pendant un détourage (celui qui tourne, pas ceux en attente)
+    const activeIndex = state.players.findIndex((p) => p.busy && !p.queued);
+    const active = state.players[activeIndex];
+    els.stageBusy.hidden = !active;
+    const busyText = active && active.progress
+      ? (COUNT === 2 ? `${playerLabel(activeIndex)} · ${active.progress.text}` : active.progress.text) : '';
+    els.stageBusyText.textContent = busyText;
 
-    els.status.textContent = state.busy && state.progress ? state.progress.text
-      : state.cutout ? t('player.statusReady') : t('player.statusStart');
+    const ready = state.players.every((p) => p.cutout) && !anyBusy;
+    els.previewBtn.disabled = !ready;
+    els.previewBtn.title = ready ? '' : t(pageKey('disabledTitle'));
+
+    const missing = state.players.findIndex((p) => !p.photo);
+    els.status.textContent = busyText
+      || (state.players.every((p) => !p.photo) ? t(pageKey('statusStart'))
+        : missing >= 0 ? t('player.statusMissing', { n: missing + 1 })
+          : t(pageKey('statusReady')));
   }
 
   let toastTimer;
@@ -451,11 +572,6 @@
     els.toast.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => els.toast.classList.remove('show'), 3200);
-  }
-
-  function setProgress(frac, text) {
-    state.progress = { frac, text };
-    refreshUI();
   }
 
   // ---------- Site & template ----------
@@ -503,7 +619,12 @@
     return canvasToBlob(c, 'image/jpeg', 0.95);
   }
 
-  async function removeBg(input) {
+  function setProgress(p, frac, text) {
+    p.progress = { frac, text };
+    refreshUI();
+  }
+
+  async function removeBg(p, input) {
     let mod;
     try {
       mod = await loadEngine();
@@ -524,9 +645,9 @@
           let all = 0;
           downloads.forEach(([d, a]) => { done += d; all += a; });
           const frac = all ? done / all : null;
-          setProgress(frac, t('player.downloading', { pct: frac == null ? '…' : Math.round(frac * 100) }));
+          setProgress(p, frac, t('player.downloading', { pct: frac == null ? '…' : Math.round(frac * 100) }));
         } else if (key.startsWith('compute')) {
-          setProgress(null, t('player.computing'));
+          setProgress(p, null, t('player.computing'));
         }
       },
     };
@@ -537,81 +658,100 @@
     return removeBackground(input, { ...config, device: 'cpu' });
   }
 
-  async function runCutout() {
-    if (!state.photo) return;
-    const token = ++runToken;
-    const started = performance.now();
-    state.busy = true;
-    state.message = null;
-    setProgress(null, t('player.loadingEngine'));
+  function applyCutout(i) {
+    const p = state.players[i];
+    p.cutout = p.rawCutout && (state.harden ? hardenAlpha(p.rawCutout) : p.rawCutout);
+    if (p.cutout) cards[i].after.src = p.cutout.toDataURL('image/png');
+  }
+
+  // Met le détourage du joueur i dans la file : un seul calcul à la fois.
+  function runCutout(i) {
+    const p = state.players[i];
+    if (!p.photo) return;
+    const token = ++p.token;
+    p.busy = true;
+    p.queued = true;
+    p.message = null;
+    p.progress = { frac: null, text: t('player.queued') };
+    refreshUI();
     draw();
+    queue = queue.then(() => doCutout(i, token)).catch(() => {});
+  }
+
+  async function doCutout(i, token) {
+    const p = state.players[i];
+    if (token !== p.token) return;
+    const started = performance.now();
+    p.queued = false;
+    setProgress(p, null, t('player.loadingEngine'));
     try {
-      const input = await prepareInput(state.photo.file);
-      const blob = await removeBg(input);
-      if (token !== runToken) return;
+      const input = await prepareInput(p.photo.file);
+      const blob = await removeBg(p, input);
+      if (token !== p.token) return;
       const trimmed = trimTransparent(await loadBlobImage(blob), CUTOUT_MAX);
       if (!trimmed) throw new Error(t('player.nothingFound'));
-      state.rawCutout = trimmed;
-      applyCutout();
-      if (!state.placed) {
-        state.scale = 1;
-        state.y = H;
-        state.x = anchorX('left');
-        state.placed = true;
+      p.rawCutout = trimmed;
+      applyCutout(i);
+      if (!p.placed) {
+        p.scale = 1;
+        p.y = H;
+        p.x = anchorX(p, START[i]);
+        p.placed = true;
       }
-      state.selected = true;
-      state.message = { key: 'player.done', params: { s: (performance.now() - started) / 1000 } };
+      state.selected = i;
+      p.message = { key: 'player.done', params: { s: (performance.now() - started) / 1000 } };
     } catch (err) {
-      if (token !== runToken) return;
+      if (token !== p.token) return;
       console.error(err);
-      state.message = err.code === 'engine'
+      p.message = err.code === 'engine'
         ? { key: 'player.errorEngine', warn: true }
         : { key: 'player.error', params: { msg: err.message || String(err) }, warn: true };
     } finally {
-      if (token === runToken) {
-        state.busy = false;
-        state.progress = null;
+      if (token === p.token) {
+        p.busy = false;
+        p.progress = null;
         refreshUI();
         draw();
       }
     }
   }
 
-  function applyCutout() {
-    state.cutout = state.rawCutout && (state.harden ? hardenAlpha(state.rawCutout) : state.rawCutout);
-    if (state.cutout) els.afterImg.src = state.cutout.toDataURL('image/png');
-  }
-
-  function setPhoto(file) {
+  function setPhoto(i, file) {
     if (!file || !file.type.startsWith('image/')) return toast(t('toast.notImage'));
-    if (state.photo) URL.revokeObjectURL(state.photo.url);
-    state.photo = { file, name: file.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(file) };
-    state.rawCutout = null;
-    state.cutout = null;
-    state.placed = false;
-    runCutout();
+    const p = state.players[i];
+    if (p.photo) URL.revokeObjectURL(p.photo.url);
+    p.photo = { file, name: file.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(file) };
+    p.rawCutout = null;
+    p.cutout = null;
+    p.placed = false;
+    runCutout(i);
   }
 
-  function setAnchor(anchor) {
-    state.x = anchorX(anchor);
-    state.y = H;
-    state.selected = true;
+  function setAnchor(i, anchor) {
+    const p = state.players[i];
+    p.x = anchorX(p, anchor);
+    p.y = H;
+    state.selected = i;
     refreshUI();
     draw();
   }
 
-  function newPhoto() {
-    runToken++;
-    if (state.photo) URL.revokeObjectURL(state.photo.url);
-    Object.assign(state, { photo: null, rawCutout: null, cutout: null, placed: false, busy: false, progress: null, message: null, selected: false, x: ANCHORS.left, y: H, scale: 1 });
+  function newPhotos() {
+    state.players.forEach((p, i) => {
+      p.token++;
+      if (p.photo) URL.revokeObjectURL(p.photo.url);
+      Object.assign(p, makePlayer(i), { token: p.token });
+    });
+    state.selected = -1;
     refreshUI();
     draw();
   }
 
-  async function downloadCutout() {
-    if (!state.cutout) return;
-    const blob = await canvasToBlob(state.cutout, 'image/png');
-    saveBlob(blob, `${slugify(state.photo.name) || 'player'}-cutout.png`);
+  async function downloadCutout(i) {
+    const p = state.players[i];
+    if (!p.cutout) return;
+    const blob = await canvasToBlob(p.cutout, 'image/png');
+    saveBlob(blob, `${slugify(p.photo.name) || 'player'}-cutout.png`);
   }
 
   function saveBlob(blob, name) {
@@ -657,10 +797,12 @@
   }
 
   async function openPreview() {
-    if (!state.cutout || state.busy) return;
-    state.selected = false;
+    if (!state.players.every((p) => p.cutout) || state.players.some((p) => p.busy)) return;
+    state.selected = -1;
+    refreshUI();
     draw();
-    els.filenameInput.value = [slugify(state.photo.name), state.site && state.site.id].filter(Boolean).join('-');
+    const names = state.players.map((p) => slugify(p.photo.name)).filter(Boolean).join('-vs-');
+    els.filenameInput.value = [names, state.site && state.site.id].filter(Boolean).join('-');
     els.previewImg.setAttribute('src', '');
     els.dialog.showModal();
     await renderPreview();
@@ -684,33 +826,37 @@
     cv.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       cv.focus({ preventScroll: true });
-      const p = toLogical(e);
-      if (hitPlayer(p)) {
-        state.selected = true;
-        drag = { dx: p.x - state.x, dy: p.y - state.y };
+      const pt = toLogical(e);
+      const i = hitPlayer(pt);
+      if (i >= 0) {
+        const p = state.players[i];
+        state.selected = i;
+        drag = { i, dx: pt.x - p.x, dy: pt.y - p.y };
         cv.setPointerCapture(e.pointerId);
         cv.classList.add('is-dragging');
       } else {
-        state.selected = false;
-        if (!state.cutout && !state.busy) els.photoInput.click();
+        state.selected = -1;
+        const slot = hitSlot(pt);
+        if (slot >= 0) cards[slot].file.click();
       }
       refreshUI();
       draw();
     });
     cv.addEventListener('pointermove', (e) => {
-      const p = toLogical(e);
+      const pt = toLogical(e);
       if (drag) {
-        let x = clamp(p.x - drag.dx, 0, W);
-        let y = clamp(p.y - drag.dy, 0, H * 1.5);
+        const p = state.players[drag.i];
+        let x = clamp(pt.x - drag.dx, 0, W);
+        let y = clamp(pt.y - drag.dy, 0, H * 1.5);
         state.guides = [];
-        if (!e.altKey) ({ x, y } = snap(x, y));
-        state.x = x;
-        state.y = y;
+        if (!e.altKey) ({ x, y } = snap(drag.i, x, y));
+        p.x = x;
+        p.y = y;
         draw();
         return;
       }
-      const over = hitPlayer(p);
-      cv.style.cursor = over ? 'grab' : !state.cutout && !state.busy ? 'pointer' : 'default';
+      const over = hitPlayer(pt);
+      cv.style.cursor = over >= 0 ? 'grab' : hitSlot(pt) >= 0 ? 'pointer' : 'default';
       if (over !== state.hover) {
         state.hover = over;
         draw();
@@ -727,85 +873,78 @@
     cv.addEventListener('pointerup', endDrag);
     cv.addEventListener('pointercancel', endDrag);
     cv.addEventListener('pointerleave', () => {
-      if (!drag && state.hover) {
-        state.hover = false;
+      if (!drag && state.hover !== -1) {
+        state.hover = -1;
         draw();
       }
     });
     cv.addEventListener('wheel', (e) => {
-      if (!hitPlayer(toLogical(e))) return;
+      const i = hitPlayer(toLogical(e));
+      if (i < 0) return;
       e.preventDefault();
-      state.scale = clamp(state.scale * Math.exp(-e.deltaY * 0.0015), 0.2, 2.5);
-      state.selected = true;
+      const p = state.players[i];
+      p.scale = clamp(p.scale * Math.exp(-e.deltaY * 0.0015), 0.2, 2.5);
+      state.selected = i;
       refreshUI();
       draw();
     }, { passive: false });
 
     document.addEventListener('keydown', (e) => {
-      if (els.dialog.open || !state.cutout || !state.selected) return;
+      const p = state.players[state.selected];
+      if (els.dialog.open || !p || !p.cutout) return;
       if (e.target.closest('input, select, textarea')) return;
+      if (e.key === 'Escape') {
+        state.selected = -1;
+        refreshUI();
+        draw();
+        return;
+      }
       const step = e.shiftKey ? 10 : 1;
       const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
       if (!d) return;
       e.preventDefault();
-      state.x = clamp(state.x + d[0], 0, W);
-      state.y = clamp(state.y + d[1], 0, H * 1.5);
+      p.x = clamp(p.x + d[0], 0, W);
+      p.y = clamp(p.y + d[1], 0, H * 1.5);
       refreshUI();
       draw();
     });
 
-    // Photo : clic, glisser-déposer (zone ou image), coller
-    els.photoInput.addEventListener('change', () => {
-      const file = els.photoInput.files[0];
-      els.photoInput.value = '';
-      if (file) setPhoto(file);
+    // Photo déposée sur l'image : moitié gauche = joueur 1, moitié droite = joueur 2
+    els.stage.addEventListener('dragover', (e) => {
+      if (![...e.dataTransfer.types].includes('Files')) return;
+      e.preventDefault();
+      els.stage.classList.add('is-over');
     });
-    [els.photoDrop, els.stage].forEach((zone) => {
-      zone.addEventListener('dragover', (e) => {
-        if (![...e.dataTransfer.types].includes('Files')) return;
-        e.preventDefault();
-        zone.classList.add('is-over');
-      });
-      zone.addEventListener('dragleave', () => zone.classList.remove('is-over'));
-      zone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        zone.classList.remove('is-over');
-        if (!state.busy && e.dataTransfer.files[0]) setPhoto(e.dataTransfer.files[0]);
-      });
+    els.stage.addEventListener('dragleave', (e) => {
+      if (!els.stage.contains(e.relatedTarget)) els.stage.classList.remove('is-over');
+    });
+    els.stage.addEventListener('drop', (e) => {
+      e.preventDefault();
+      els.stage.classList.remove('is-over');
+      const file = e.dataTransfer.files[0];
+      const i = COUNT === 2 && toLogical(e).x >= W / 2 ? 1 : 0;
+      if (file && !state.players[i].busy) setPhoto(i, file);
     });
     window.addEventListener('dragover', (e) => e.preventDefault());
     window.addEventListener('drop', (e) => e.preventDefault());
+
+    // Coller une image : joueur sélectionné, sinon le premier sans photo
     document.addEventListener('paste', (e) => {
       const file = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'));
-      if (file && !state.busy && !els.dialog.open) {
-        e.preventDefault();
-        setPhoto(file);
-      }
+      if (!file || els.dialog.open) return;
+      const sel = state.players[state.selected];
+      const i = sel && !sel.busy ? state.selected : state.players.findIndex((p) => !p.photo);
+      if (i < 0) return;
+      e.preventDefault();
+      setPhoto(i, file);
     });
 
-    els.rerunBtn.addEventListener('click', runCutout);
-    els.cutoutBtn.addEventListener('click', downloadCutout);
     els.engineSelect.value = prefs.get('player:engine', 'isnet_fp16');
     els.engineSelect.addEventListener('change', () => prefs.set('player:engine', els.engineSelect.value));
-    els.anchorSeg.addEventListener('click', (e) => {
-      const b = e.target.closest('button[data-anchor]');
-      if (b) setAnchor(b.dataset.anchor);
-    });
-    els.sizeRange.addEventListener('input', () => {
-      state.scale = els.sizeRange.value / 100;
-      state.selected = true;
-      refreshUI();
-      draw();
-    });
-    els.flipToggle.addEventListener('change', () => {
-      state.flip = els.flipToggle.checked;
-      prefs.set('player:flip', state.flip);
-      draw();
-    });
     els.hardenToggle.addEventListener('change', () => {
       state.harden = els.hardenToggle.checked;
       prefs.set('player:harden', state.harden);
-      applyCutout();
+      state.players.forEach((_, i) => applyCutout(i));
       refreshUI();
       draw();
     });
@@ -815,7 +954,7 @@
       draw();
     });
     els.siteSelect.addEventListener('change', () => selectSite(els.siteSelect.value));
-    els.resetBtn.addEventListener('click', newPhoto);
+    els.resetBtn.addEventListener('click', newPhotos);
 
     els.previewBtn.addEventListener('click', openPreview);
     els.formatSelect.value = prefs.get('format', 'jpeg');
@@ -842,6 +981,7 @@
   }
 
   // ---------- Démarrage ----------
+  buildCards();
   document.documentElement.lang = lang;
   applyStaticTexts();
   bindEvents();
