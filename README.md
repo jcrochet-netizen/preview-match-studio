@@ -8,7 +8,7 @@ Export en 1200 × 675 px (16:9), en JPG, WebP ou PNG.
 En ligne : https://jcrochet-netizen.github.io/preview-match-studio/
 
 En local : double-cliquez sur `lancer.command` : un petit serveur local démarre et le navigateur s'ouvre sur
-http://localhost:8765. Laissez la fenêtre du Terminal ouverte pendant l'utilisation.
+http://localhost:8779 (ou le port libre suivant). Laissez la fenêtre du Terminal ouverte pendant l'utilisation.
 
 Si vous ouvrez `index.html` directement depuis le Finder, le téléchargement sera bloqué par le navigateur.
 
@@ -27,6 +27,19 @@ Langue : français, anglais ou portugais (Brésil), via le menu en haut à droit
 
 Raccourcis : flèches = déplacer au pixel (Maj = 10 px), Alt pendant le glisser = sans magnétisme,
 Échap = désélectionner.
+
+## Test : photo de joueur détourée par IA (`player.html`)
+
+Page de test : on importe la photo d'un joueur, une IA isole le joueur du décor et le pose sur le
+template du site choisi. On peut ensuite le déplacer, le redimensionner, le retourner, puis exporter
+le visuel (ou le joueur seul en PNG transparent).
+
+- Moteur : [IMG.LY Background Removal](https://github.com/imgly/background-removal-js) 1.7.0, exécuté
+  dans le navigateur. La photo n'est envoyée à aucun serveur. Le modèle (≈ 80 Mo, ou ≈ 40 Mo en mode
+  « Rapide ») se télécharge au premier usage puis reste en cache. Licence AGPL-3.0.
+- L'option « Rendre le joueur bien opaque » comble les zones que le modèle laisse semi-transparentes
+  (ex. maillot jaune sur parquet jaune).
+- Préférez des photos où le joueur n'est coupé qu'en bas du cadre : une coupe sur le côté reste visible.
 
 ## Ajouter un site et son template (pour toute l'équipe)
 
