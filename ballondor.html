@@ -55,12 +55,41 @@
       </section>
 
       <section class="card">
-        <h2><span class="step">2</span><span data-i18n="ballondor.photosTitle">Photos des trois joueurs</span></h2>
+        <h2><span class="step">2</span><span data-i18n="title.title">Titre</span></h2>
+        <label class="field"><span data-i18n="title.text">Texte du titre</span>
+          <input type="text" id="titleText" placeholder="ex. Ballon d'Or 2026 : le podium" data-i18n-attr="placeholder:title.placeholder">
+        </label>
+        <label class="range"><span data-i18n="title.size">Taille</span>
+          <input type="range" id="titleSize" min="24" max="140" step="1">
+          <output id="titleSizeOut"></output>
+        </label>
+        <div class="inline-field">
+          <span data-i18n="title.color">Couleur</span>
+          <span class="color-pick" id="titleSwatches">
+            <button type="button" class="swatch" data-color="#ffffff" style="background:#ffffff" title="Blanc" data-i18n-attr="title:title.white;aria-label:title.white"></button>
+            <button type="button" class="swatch" data-color="#f5c542" style="background:#f5c542" title="Or" data-i18n-attr="title:title.gold;aria-label:title.gold"></button>
+            <input type="color" id="titleColor" value="#ffffff" aria-label="Couleur" data-i18n-attr="aria-label:title.color">
+          </span>
+        </div>
+        <label class="inline-field"><span data-i18n="title.font">Police</span>
+          <select class="select" id="titleFont">
+            <option value="inter">Inter</option>
+            <option value="anton">Anton</option>
+          </select>
+        </label>
+        <div class="row-btns">
+          <button class="btn small ghost" id="titleCenterBtn" type="button" data-i18n="title.recenter">Recentrer le titre</button>
+        </div>
+        <small class="note" data-i18n="title.note">Glissez le titre sur l'image pour le déplacer. Il est réduit automatiquement s'il est trop long.</small>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">3</span><span data-i18n="ballondor.photosTitle">Photos des trois joueurs</span></h2>
         <div id="players"></div>
       </section>
 
       <section class="card">
-        <h2><span class="step">3</span><span data-i18n="player.settingsTitle">Réglages du détourage</span></h2>
+        <h2><span class="step">4</span><span data-i18n="player.settingsTitle">Réglages du détourage</span></h2>
         <label class="field"><span data-i18n="player.engine">Moteur de détourage</span>
           <select class="select" id="engineSelect">
             <option value="isnet" data-i18n="player.engineBest">Haute qualité — pleine précision (≈ 170 Mo, recommandé)</option>
@@ -75,7 +104,7 @@
       </section>
 
       <section class="card">
-        <h2><span class="step">4</span><span data-i18n="export.title">Aperçu &amp; téléchargement</span></h2>
+        <h2><span class="step">5</span><span data-i18n="export.title">Aperçu &amp; téléchargement</span></h2>
         <button class="btn primary block" id="previewBtn" type="button" data-i18n="export.preview">Prévisualiser</button>
       </section>
     </aside>
@@ -91,6 +120,9 @@
         <input type="file" accept="image/*" hidden data-role="file">
         <img data-role="thumb" alt="" hidden>
         <span data-role="dropText"></span>
+      </label>
+      <label class="field name-field" data-role="nameField" hidden><span data-i18n="player.name">Nom du joueur</span>
+        <input type="text" data-role="name" spellcheck="false" placeholder="ex. Ousmane Dembélé" data-i18n-attr="placeholder:player.namePlaceholder">
       </label>
       <div class="progress" data-role="progress" hidden><div class="progress-bar" data-role="bar"></div></div>
       <small class="note" data-role="note"></small>

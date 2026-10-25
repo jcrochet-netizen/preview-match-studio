@@ -55,6 +55,10 @@ détourée par IA comme sur les pages joueur (mêmes réglages : moteur, rognage
   inclinés de la case (option « Garder chaque joueur dans sa case »). « Recentrer dans la case »
   le replace au départ.
 - Une photo déposée sur l'image va dans la case la plus proche.
+- Titre facultatif (étape 2) : texte en gras, taille, couleur (Blanc, Or ou au choix), police Inter ou
+  Anton. On le déplace à la souris ; il est réduit automatiquement s'il est trop long.
+- Nom de chaque joueur (dans sa carte) : affiché dans la bande noire sous la case, centré sur la largeur
+  de la case et réduit s'il dépasse. Les noms servent aussi au nom du fichier exporté.
 - Le logo du site est facultatif (« Aucun logo » par défaut).
 - Les cases (centre, sol, taille, contour) sont décrites dans `js/config.js`, `playerLayouts.ballondor`,
   en pixels de l'image finale.

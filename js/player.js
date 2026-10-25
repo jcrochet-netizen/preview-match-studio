@@ -14,6 +14,8 @@
   const SLOTS = LAYOUT.slots || null; // cases fixes : chaque joueur est posé sur le sol de sa case
   const COUNT = SLOTS ? SLOTS.length : Math.min(2, Math.max(1, LAYOUT.players || 1));
   const OPTIONAL_LOGO = LAYOUT.siteLogo === 'optional';
+  const TITLE = LAYOUT.title || null; // titre facultatif (page Ballon d'Or)
+  const NAME_SIZE = 28; // taille des noms sous les cases (réduite si le nom est plus large que la case)
   // Moteur de détourage : IMG.LY Background Removal (licence AGPL), exécuté dans le navigateur.
   // Le modèle est téléchargé depuis le CDN d'IMG.LY au premier usage, puis gardé en cache.
   const ENGINE_URL = 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm';
@@ -239,6 +241,7 @@
     y: floorY(i), // bas du joueur
     scale: 1,
     flip: false,
+    name: '', // nom affiché sous la case (cases fixes)
     trim: prefs.get('player:trim', 2), // pixels rognés sur le contour (image finale, joueur à 100 %)
     busy: false,
     queued: false,
@@ -256,8 +259,16 @@
     shadow: prefs.get('player:shadow', true),
     harden: prefs.get('player:harden', true),
     clip: prefs.get(`${LAYOUT_ID}:clip`, true), // cases fixes : joueur découpé au contour de sa case
+    // Titre : texte, taille, couleur, police et position (centre du texte), mémorisés
+    title: TITLE ? {
+      text: '', size: TITLE.size, color: TITLE.color, font: 'inter', x: TITLE.x, y: TITLE.y,
+      ...prefs.get(`${LAYOUT_ID}:title`, {}),
+    } : null,
+    titleSelected: false,
+    titleHover: false,
     guides: [],
   };
+  let titleBox = null; // cadre du titre, calculé au dernier rendu (sélection et déplacement)
   let drag = null;
   let siteToken = 0;
   let queue = Promise.resolve(); // les détourages passent l'un après l'autre
@@ -277,6 +288,13 @@
     hardenToggle: $('#hardenToggle'),
     shadowToggle: $('#shadowToggle'),
     clipToggle: $('#clipToggle'),
+    titleText: $('#titleText'),
+    titleSize: $('#titleSize'),
+    titleSizeOut: $('#titleSizeOut'),
+    titleColor: $('#titleColor'),
+    titleFont: $('#titleFont'),
+    titleSwatches: $('#titleSwatches'),
+    titleCenterBtn: $('#titleCenterBtn'),
     previewBtn: $('#previewBtn'),
     dialog: $('#previewDialog'),
     previewImg: $('#previewImg'),
@@ -414,8 +432,61 @@
       c.restore();
     });
 
+    drawNames(c, k);
+    drawTitle(c, k);
     drawSiteLogo(c);
     if (editor) drawOverlay(c);
+  }
+
+  // Texte centré sur (x, y), réduit pour tenir dans maxW, avec une ombre pour rester lisible
+  function fitText(c, text, font, size, maxW) {
+    c.font = font(size);
+    const w = c.measureText(text).width;
+    if (w > maxW) {
+      size *= maxW / w;
+      c.font = font(size);
+    }
+    return { size, w: Math.min(w, maxW) };
+  }
+
+  // Noms des joueurs dans la bande sous chaque case, centrés sur la largeur de la case
+  function drawNames(c, k) {
+    if (!SLOTS) return;
+    state.players.forEach((p, i) => {
+      const zone = SLOTS[i].name;
+      const text = p.name.trim();
+      if (!zone || !text) return;
+      c.save();
+      fitText(c, text, (size) => `800 ${size}px Inter, system-ui, sans-serif`, NAME_SIZE, zone.w);
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillStyle = '#ffffff';
+      c.shadowColor = 'rgba(0, 0, 0, 0.6)';
+      c.shadowBlur = 8 * k;
+      c.fillText(text, zone.x, zone.y);
+      c.restore();
+    });
+  }
+
+  const titleFont = (size) => (state.title.font === 'anton'
+    ? `${size}px Anton, Impact, sans-serif`
+    : `800 ${size}px Inter, system-ui, sans-serif`);
+
+  function drawTitle(c, k) {
+    titleBox = null;
+    const tt = state.title;
+    if (!tt || !tt.text.trim()) return;
+    c.save();
+    const { size, w } = fitText(c, tt.text, titleFont, tt.size, TITLE.maxW);
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillStyle = tt.color;
+    c.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    c.shadowBlur = 18 * k;
+    c.shadowOffsetY = 4 * k;
+    c.fillText(tt.text, tt.x, tt.y);
+    c.restore();
+    titleBox = { x: tt.x - w / 2 - 8, y: tt.y - size * 0.65, w: w + 16, h: size * 1.3 };
   }
 
   function drawSiteLogo(c) {
@@ -479,6 +550,12 @@
         c.strokeRect(r.x, r.y, r.w, r.h);
       }
     });
+    if (titleBox && (state.titleSelected || state.titleHover)) {
+      c.setLineDash([7 * u, 5 * u]);
+      c.lineWidth = 2 * u;
+      c.strokeStyle = state.titleSelected ? '#ff6b1f' : 'rgba(255, 255, 255, 0.55)';
+      c.strokeRect(titleBox.x, titleBox.y, titleBox.w, titleBox.h);
+    }
     if (state.guides.length) {
       c.setLineDash([6 * u, 5 * u]);
       c.lineWidth = 1.5 * u;
@@ -535,6 +612,8 @@
         after: q('after'),
         anchors: q('anchors'),
         recenter: q('recenter'),
+        nameField: q('nameField'),
+        name: q('name'),
         size: q('size'),
         sizeOut: q('sizeOut'),
         flip: q('flip'),
@@ -567,6 +646,14 @@
         if (b) setAnchor(i, b.dataset.anchor);
       });
       card.recenter.addEventListener('click', () => recenter(i));
+      // Nom sous la case (pages à cases fixes avec une zone de nom)
+      if (card.nameField) {
+        card.nameField.hidden = !(SLOTS && SLOTS[i].name);
+        card.name.addEventListener('input', () => {
+          state.players[i].name = card.name.value;
+          draw();
+        });
+      }
       card.size.addEventListener('input', () => {
         state.players[i].scale = card.size.value / 100;
         state.selected = i;
@@ -642,6 +729,7 @@
         b.setAttribute('aria-pressed', String(!!p.cutout && Math.abs(p.x - anchorX(p, b.dataset.anchor)) < 1));
       });
       card.recenter.disabled = !p.cutout;
+      if (card.name && card.name.value !== p.name) card.name.value = p.name;
       card.size.disabled = !p.cutout;
       card.size.value = Math.round(p.scale * 100);
       card.sizeOut.textContent = pct(p.scale);
@@ -660,6 +748,13 @@
     els.hardenToggle.disabled = anyBusy;
     els.shadowToggle.checked = state.shadow;
     if (els.clipToggle) els.clipToggle.checked = state.clip;
+    if (state.title) {
+      if (els.titleText.value !== state.title.text) els.titleText.value = state.title.text;
+      els.titleSize.value = state.title.size;
+      els.titleSizeOut.textContent = `${state.title.size} px`;
+      els.titleColor.value = state.title.color;
+      els.titleFont.value = state.title.font;
+    }
 
     // Bandeau sur l'image pendant un détourage (celui qui tourne, pas ceux en attente)
     const activeIndex = state.players.findIndex((p) => p.busy && !p.queued);
@@ -867,6 +962,17 @@
     draw();
   }
 
+  function saveTitle() {
+    prefs.set(`${LAYOUT_ID}:title`, state.title);
+  }
+
+  function setTitle(changes) {
+    Object.assign(state.title, changes);
+    saveTitle();
+    refreshUI();
+    draw();
+  }
+
   function newPhotos() {
     state.players.forEach((p, i) => {
       p.token++;
@@ -932,7 +1038,7 @@
     state.selected = -1;
     refreshUI();
     draw();
-    const names = state.players.map((p) => slugify(p.photo.name)).filter(Boolean);
+    const names = state.players.map((p) => slugify(p.name.trim() || p.photo.name)).filter(Boolean);
     const base = LAYOUT.filePrefix ? [LAYOUT.filePrefix, ...names].join('-') : names.join('-vs-');
     els.filenameInput.value = [base, state.site && state.site.id].filter(Boolean).join('-');
     els.previewImg.setAttribute('src', '');
@@ -959,6 +1065,17 @@
       if (e.button !== 0) return;
       cv.focus({ preventScroll: true });
       const pt = toLogical(e);
+      if (titleBox && inRect(pt, titleBox)) {
+        state.titleSelected = true;
+        state.selected = -1;
+        drag = { title: true, dx: pt.x - state.title.x, dy: pt.y - state.title.y };
+        cv.setPointerCapture(e.pointerId);
+        cv.classList.add('is-dragging');
+        refreshUI();
+        draw();
+        return;
+      }
+      state.titleSelected = false;
       const i = hitPlayer(pt);
       if (i >= 0) {
         const p = state.players[i];
@@ -976,6 +1093,19 @@
     });
     cv.addEventListener('pointermove', (e) => {
       const pt = toLogical(e);
+      if (drag && drag.title) {
+        let x = clamp(pt.x - drag.dx, 0, W);
+        const y = clamp(pt.y - drag.dy, 0, H);
+        state.guides = [];
+        if (!e.altKey && Math.abs(x - W / 2) < SNAP) {
+          x = W / 2;
+          state.guides = [{ x }];
+        }
+        state.title.x = x;
+        state.title.y = y;
+        draw();
+        return;
+      }
       if (drag) {
         const p = state.players[drag.i];
         let x = clamp(pt.x - drag.dx, 0, W);
@@ -987,15 +1117,18 @@
         draw();
         return;
       }
-      const over = hitPlayer(pt);
-      cv.style.cursor = over >= 0 ? 'grab' : hitSlot(pt) >= 0 ? 'pointer' : 'default';
-      if (over !== state.hover) {
+      const overTitle = !!titleBox && inRect(pt, titleBox);
+      const over = overTitle ? -1 : hitPlayer(pt);
+      cv.style.cursor = overTitle || over >= 0 ? 'grab' : hitSlot(pt) >= 0 ? 'pointer' : 'default';
+      if (over !== state.hover || overTitle !== state.titleHover) {
         state.hover = over;
+        state.titleHover = overTitle;
         draw();
       }
     });
     const endDrag = () => {
       if (!drag) return;
+      if (drag.title) saveTitle();
       drag = null;
       state.guides = [];
       cv.classList.remove('is-dragging');
@@ -1005,8 +1138,9 @@
     cv.addEventListener('pointerup', endDrag);
     cv.addEventListener('pointercancel', endDrag);
     cv.addEventListener('pointerleave', () => {
-      if (!drag && state.hover !== -1) {
+      if (!drag && (state.hover !== -1 || state.titleHover)) {
         state.hover = -1;
+        state.titleHover = false;
         draw();
       }
     });
@@ -1023,10 +1157,12 @@
 
     document.addEventListener('keydown', (e) => {
       const p = state.players[state.selected];
-      if (els.dialog.open || !p || !p.cutout) return;
+      const titleActive = state.titleSelected && !!titleBox;
+      if (els.dialog.open || (!titleActive && (!p || !p.cutout))) return;
       if (e.target.closest('input, select, textarea')) return;
       if (e.key === 'Escape') {
         state.selected = -1;
+        state.titleSelected = false;
         refreshUI();
         draw();
         return;
@@ -1035,8 +1171,14 @@
       const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
       if (!d) return;
       e.preventDefault();
-      p.x = clamp(p.x + d[0], 0, W);
-      p.y = clamp(p.y + d[1], 0, H * 1.5);
+      if (titleActive) {
+        state.title.x = clamp(state.title.x + d[0], 0, W);
+        state.title.y = clamp(state.title.y + d[1], 0, H);
+        saveTitle();
+      } else {
+        p.x = clamp(p.x + d[0], 0, W);
+        p.y = clamp(p.y + d[1], 0, H * 1.5);
+      }
       refreshUI();
       draw();
     });
@@ -1088,6 +1230,25 @@
         draw();
       });
     }
+    if (state.title) {
+      els.titleText.addEventListener('input', () => {
+        state.title.text = els.titleText.value;
+        saveTitle();
+        draw();
+      });
+      els.titleSize.addEventListener('input', () => setTitle({ size: Number(els.titleSize.value) }));
+      els.titleColor.addEventListener('input', () => setTitle({ color: els.titleColor.value }));
+      els.titleSwatches.addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-color]');
+        if (b) setTitle({ color: b.dataset.color });
+      });
+      els.titleFont.addEventListener('change', () => {
+        setTitle({ font: els.titleFont.value });
+        // Anton n'est chargée qu'à la demande : on redessine une fois la police disponible
+        if (document.fonts) document.fonts.load(titleFont(state.title.size)).then(draw);
+      });
+      els.titleCenterBtn.addEventListener('click', () => setTitle({ x: TITLE.x, y: TITLE.y }));
+    }
     els.shadowToggle.addEventListener('change', () => {
       state.shadow = els.shadowToggle.checked;
       prefs.set('player:shadow', state.shadow);
@@ -1130,7 +1291,10 @@
   populateSites();
   refreshUI();
   selectSite(prefs.get(`${LAYOUT_ID}:site`, ''));
-  if (document.fonts) document.fonts.ready.then(draw);
+  if (document.fonts) {
+    document.fonts.ready.then(draw);
+    if (state.title && state.title.font === 'anton') document.fonts.load(titleFont(state.title.size)).then(draw);
+  }
 
   // Exposé pour le débogage dans la console.
   window.PlayerStudio = { state, setPhoto, draw };

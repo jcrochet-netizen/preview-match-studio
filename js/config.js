@@ -57,6 +57,8 @@ window.APP_CONFIG = {
   //   slots      : cases fixes ; chaque joueur est posé sur le sol de sa case (px de l'image finale) :
   //                x = centre, floor = hauteur du sol, maxW / maxH = taille maximale à 100 %,
   //                side = libellé de position, clip = contour de la case [[x, y], …]
+  //                name = zone du nom sous la case { x: centre, y: milieu, w: largeur maximale }
+  //   title      : titre facultatif (centre du texte, taille et couleur par défaut, largeur maximale)
   //   siteLogo   : 'optional' → menu des sites (tous sports) avec « Aucun logo »
   //   filePrefix : début du nom de fichier exporté
   playerLayouts: {
@@ -67,10 +69,16 @@ window.APP_CONFIG = {
       template: 'assets/templates/ballondor-top3.png',
       siteLogo: 'optional',
       filePrefix: 'ballon-dor',
+      // Titre en haut, entre le trophée et les projecteurs
+      title: { x: 600, y: 92, size: 56, color: '#ffffff', maxW: 720 },
+      // Noms : dans la bande noire sous chaque case (y 596 → 657), centrés sur le trait de sol de la case
       slots: [
-        { x: 218, floor: 596, maxW: 290, maxH: 400, side: 'left', clip: [[197, 0], [538, 0], [368, 596], [27, 596]] },
-        { x: 580, floor: 596, maxW: 290, maxH: 400, side: 'center', clip: [[542, 0], [890, 0], [729, 596], [372, 596]] },
-        { x: 962, floor: 596, maxW: 310, maxH: 400, side: 'right', clip: [[894, 0], [1279, 0], [1118, 596], [733, 596]] },
+        { x: 218, floor: 596, maxW: 290, maxH: 400, side: 'left', clip: [[197, 0], [538, 0], [368, 596], [27, 596]],
+          name: { x: 183, y: 629, w: 290 } },
+        { x: 580, floor: 596, maxW: 290, maxH: 400, side: 'center', clip: [[542, 0], [890, 0], [729, 596], [372, 596]],
+          name: { x: 554, y: 629, w: 285 } },
+        { x: 962, floor: 596, maxW: 310, maxH: 400, side: 'right', clip: [[894, 0], [1279, 0], [1118, 596], [733, 596]],
+          name: { x: 944, y: 629, w: 328 } },
       ],
     },
   },
