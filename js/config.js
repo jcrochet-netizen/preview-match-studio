@@ -50,17 +50,23 @@ window.APP_CONFIG = {
       logo: 'assets/sites/lakersbrasil.jpg',
       height: 84, // logo carré : plus haut pour rester lisible
     },
-    // Sites football (logos tirés des kits de marque NSN)
-    { id: 'topmercato', name: 'Topmercato', sports: ['football'], logo: 'assets/sites/topmercato.png' },
+    // Sites football (logos tirés des kits de marque NSN ; logoOnDark : version blanche pour les fonds sombres)
+    {
+      id: 'topmercato', name: 'Topmercato', sports: ['football'],
+      logo: 'assets/sites/topmercato.png', logoOnDark: 'assets/sites/tm-logo-white.png',
+    },
     { id: 'afrik-foot', name: 'Afrik-Foot', sports: ['football'], logo: 'assets/sites/afrik-foot.png', height: 72 },
     {
       id: 'sportsmole', name: 'Sportsmole', sports: ['football'],
-      logo: 'assets/sites/sportsmole.png', logoOnDark: 'assets/sites/sportsmole-white.png',
+      logo: 'assets/sites/sportsmole.png', logoOnDark: 'assets/sites/sm-logo-white.png',
     },
-    { id: 'footballwhispers', name: 'FootballWhispers', sports: ['football'], logo: 'assets/sites/football-whispers.png', height: 72 },
+    {
+      id: 'footballwhispers', name: 'FootballWhispers', sports: ['football'], height: 72,
+      logo: 'assets/sites/football-whispers.png', logoOnDark: 'assets/sites/fw-white.png',
+    },
     {
       id: 'trivela', name: 'Trivela', sports: ['football'],
-      logo: 'assets/sites/trivela.png', logoOnDark: 'assets/sites/trivela-white.png',
+      logo: 'assets/sites/trivela.png', logoOnDark: 'assets/sites/trivela-t-white.png',
     },
   ],
 
@@ -99,6 +105,42 @@ window.APP_CONFIG = {
       ],
     },
   },
+
+  // Visuel « Ballon d'Or — Top 10 » (ballondor-top10.html), en px de l'image finale :
+  //   rows  : centre vertical de chaque ligne du classement (sous chacun des 10 filets dorés du template)
+  //   rank  : colonne du classement, chiffres dorés (centre x, taille)
+  //   thumb : vignette ronde (centre x, rayon)
+  //   name  : début du nom (x) et largeur maximale avant la colonne des clubs
+  //   club  : colonne des logos de club (centre x, côté du carré)
+  //   logo  : zone du logo du site, le logo y est calé en haut à droite
+  ballondorTop10: {
+    template: 'assets/templates/ballondor-top10.png',
+    siteLogo: 'optional',
+    sport: 'football',
+    dark: true,
+    filePrefix: 'ballon-dor-top10',
+    rows: [112, 166, 219, 272, 325, 379, 432, 486, 539, 593],
+    rank: { x: 412, size: 32 },
+    thumb: { x: 466, r: 21 },
+    name: { x: 501, maxW: 440, size: 26 },
+    club: { x: 992, size: 34 },
+    logo: { x: 1056, y: 24, w: 120, h: 40 },
+  },
+
+  // Polices du titre et des noms (pages Ballon d'Or), chargées depuis Google Fonts dans ces pages.
+  //   id : valeur enregistrée ; family / weight : police dessinée sur l'image ; fallback : police de secours
+  fonts: [
+    { id: 'inter', name: 'Inter', family: 'Inter', weight: 800, fallback: 'system-ui, sans-serif' },
+    { id: 'montserrat', name: 'Montserrat', family: 'Montserrat', weight: 800, fallback: 'sans-serif' },
+    { id: 'poppins', name: 'Poppins', family: 'Poppins', weight: 700, fallback: 'sans-serif' },
+    { id: 'oswald', name: 'Oswald', family: 'Oswald', weight: 600, fallback: 'Impact, sans-serif' },
+    { id: 'barlow', name: 'Barlow Condensed', family: 'Barlow Condensed', weight: 700, fallback: 'sans-serif' },
+    { id: 'bebas', name: 'Bebas Neue', family: 'Bebas Neue', weight: 400, fallback: 'Impact, sans-serif' },
+    { id: 'anton', name: 'Anton', family: 'Anton', weight: 400, fallback: 'Impact, sans-serif' },
+    { id: 'teko', name: 'Teko', family: 'Teko', weight: 600, fallback: 'sans-serif' },
+    { id: 'playfair', name: 'Playfair Display', family: 'Playfair Display', weight: 800, fallback: 'Georgia, serif' },
+    { id: 'cinzel', name: 'Cinzel', family: 'Cinzel', weight: 700, fallback: 'Georgia, serif' },
+  ],
 
   // Logo du site : marge par rapport aux bords haut et droit, hauteur par défaut
   siteLogo: { margin: 32, defaultHeight: 56 },

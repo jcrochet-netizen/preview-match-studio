@@ -516,10 +516,13 @@
     return { size, w: Math.min(w, maxW) };
   }
 
-  // Police du titre et des noms : Inter en gras, ou Anton (police d'affiche, grasse par nature)
-  const fontOf = (font) => (size) => (font === 'anton'
-    ? `${size}px Anton, Impact, sans-serif`
-    : `800 ${size}px Inter, system-ui, sans-serif`);
+  // Police du titre et des noms : liste commune aux pages Ballon d'Or (CFG.fonts) ;
+  // un id inconnu retombe sur la première (Inter)
+  const fontDef = (id) => CFG.fonts.find((f) => f.id === id) || CFG.fonts[0];
+  const fontOf = (id) => {
+    const f = fontDef(id);
+    return (size) => `${f.weight} ${size}px "${f.family}", ${f.fallback}`;
+  };
   const titleFont = (size) => fontOf(state.title.font)(size);
 
   // Noms des joueurs : par défaut dans la bande sous chaque case, centrés sur la largeur de la case ;
@@ -771,6 +774,28 @@
   }
 
   // ---------- Interface ----------
+  // Sélecteur de police : un bouton par police, écrit dans cette police
+  function buildFontPicker(root, onPick) {
+    root.replaceChildren(...CFG.fonts.map((f) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'font-tile';
+      b.dataset.font = f.id;
+      b.textContent = f.name;
+      b.style.fontFamily = `"${f.family}", ${f.fallback}`;
+      b.style.fontWeight = f.weight;
+      return b;
+    }));
+    root.addEventListener('click', (e) => {
+      const b = e.target.closest('.font-tile');
+      if (b) onPick(b.dataset.font);
+    });
+  }
+
+  const markFont = (root, id) => root.querySelectorAll('.font-tile').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.dataset.font === fontDef(id).id));
+  });
+
   function refreshUI() {
     state.players.forEach((p, i) => {
       const card = cards[i];
@@ -838,13 +863,13 @@
       els.titleSize.value = state.title.size;
       els.titleSizeOut.textContent = `${state.title.size} px`;
       els.titleColor.value = state.title.color;
-      els.titleFont.value = state.title.font;
+      markFont(els.titleFont, state.title.font);
     }
     if (state.names) {
       els.namesSize.value = state.names.size;
       els.namesSizeOut.textContent = `${state.names.size} px`;
       els.namesColor.value = state.names.color;
-      els.namesFont.value = state.names.font;
+      markFont(els.namesFont, state.names.font);
     }
 
     // Bandeau sur l'image pendant un détourage (celui qui tourne, pas ceux en attente)
@@ -1413,9 +1438,9 @@
         const b = e.target.closest('button[data-color]');
         if (b) setTitle({ color: b.dataset.color });
       });
-      els.titleFont.addEventListener('change', () => {
-        setTitle({ font: els.titleFont.value });
-        // Anton n'est chargée qu'à la demande : on redessine une fois la police disponible
+      buildFontPicker(els.titleFont, (font) => {
+        setTitle({ font });
+        // La police n'est chargée qu'à la demande : on redessine une fois qu'elle est disponible
         if (document.fonts) document.fonts.load(titleFont(state.title.size)).then(draw);
       });
       els.titleCenterBtn.addEventListener('click', () => setTitle({ x: TITLE.x, y: TITLE.y }));
@@ -1427,9 +1452,9 @@
         const b = e.target.closest('button[data-color]');
         if (b) setNames({ color: b.dataset.color });
       });
-      els.namesFont.addEventListener('change', () => {
-        setNames({ font: els.namesFont.value });
-        if (document.fonts) document.fonts.load(fontOf(state.names.font)(state.names.size)).then(draw);
+      buildFontPicker(els.namesFont, (font) => {
+        setNames({ font });
+        if (document.fonts) document.fonts.load(fontOf(font)(state.names.size)).then(draw);
       });
       els.namesCenterBtn.addEventListener('click', recenterNames);
     }
@@ -1439,6 +1464,9 @@
       draw();
     });
     els.siteSelect.addEventListener('change', () => selectSite(els.siteSelect.value));
+    // Pages Ballon d'Or : menu « Visuel » (Top 3, Top 10…) qui ouvre la page du visuel choisi
+    const visualSelect = $('#visualSelect');
+    if (visualSelect) visualSelect.addEventListener('change', () => { location.href = visualSelect.value; });
     els.resetBtn.addEventListener('click', newPhotos);
 
     els.previewBtn.addEventListener('click', openPreview);
@@ -1477,8 +1505,8 @@
   selectSite(prefs.get(`${LAYOUT_ID}:site`, ''));
   if (document.fonts) {
     document.fonts.ready.then(draw);
-    if (state.title && state.title.font === 'anton') document.fonts.load(titleFont(state.title.size)).then(draw);
-    if (state.names && state.names.font === 'anton') document.fonts.load(fontOf('anton')(state.names.size)).then(draw);
+    if (state.title) document.fonts.load(titleFont(state.title.size)).then(draw);
+    if (state.names) document.fonts.load(fontOf(state.names.font)(state.names.size)).then(draw);
   }
 
   // Exposé pour le débogage dans la console.

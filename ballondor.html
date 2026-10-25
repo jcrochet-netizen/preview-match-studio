@@ -6,7 +6,7 @@
   <title>Ballon d'Or — Preview Match Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@700&family=Bebas+Neue&family=Cinzel:wght@700&family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@800&family=Oswald:wght@600&family=Playfair+Display:wght@800&family=Poppins:wght@700&family=Teko:wght@600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body data-layout="ballondor">
@@ -49,6 +49,14 @@
 
     <aside class="panel">
       <section class="card">
+        <h2><span data-i18n="visual.title">Visuel</span></h2>
+        <select class="select" id="visualSelect" aria-label="Visuel" data-i18n-attr="aria-label:visual.title">
+          <option value="ballondor.html" selected data-i18n="visual.top3">Top 3</option>
+          <option value="ballondor-top10.html" data-i18n="visual.top10">Top 10</option>
+        </select>
+      </section>
+
+      <section class="card">
         <h2><span class="step">1</span><span data-i18n="site.title">Site</span></h2>
         <select class="select" id="siteSelect" aria-label="Site" data-i18n-attr="aria-label:site.title"></select>
         <small class="note" data-i18n="ballondor.siteNote">Logo du site en haut à droite (facultatif).</small>
@@ -71,12 +79,9 @@
             <input type="color" id="titleColor" value="#ffffff" aria-label="Couleur" data-i18n-attr="aria-label:title.color">
           </span>
         </div>
-        <label class="inline-field"><span data-i18n="title.font">Police</span>
-          <select class="select" id="titleFont">
-            <option value="inter">Inter</option>
-            <option value="anton">Anton</option>
-          </select>
-        </label>
+        <div class="font-field"><span data-i18n="title.font">Police</span>
+          <div class="font-grid" id="titleFont" role="group" aria-label="Police" data-i18n-attr="aria-label:title.font"></div>
+        </div>
         <div class="row-btns">
           <button class="btn small ghost" id="titleCenterBtn" type="button" data-i18n="title.recenter">Recentrer le titre</button>
         </div>
@@ -90,12 +95,9 @@
 
       <section class="card">
         <h2><span class="step">4</span><span data-i18n="names.title">Noms des joueurs</span></h2>
-        <label class="inline-field"><span data-i18n="title.font">Police</span>
-          <select class="select" id="namesFont">
-            <option value="inter">Inter</option>
-            <option value="anton">Anton</option>
-          </select>
-        </label>
+        <div class="font-field"><span data-i18n="title.font">Police</span>
+          <div class="font-grid" id="namesFont" role="group" aria-label="Police" data-i18n-attr="aria-label:title.font"></div>
+        </div>
         <div class="inline-field">
           <span data-i18n="title.color">Couleur</span>
           <span class="color-pick" id="namesSwatches">

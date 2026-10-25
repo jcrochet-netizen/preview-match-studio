@@ -50,6 +50,9 @@ sont détourées l'une après l'autre. Le sélecteur « 1 joueur / 2 joueurs » 
 
 ## Ballon d'Or (`ballondor.html`)
 
+Le menu « Visuel » en haut du panneau passe d'un visuel Ballon d'Or à l'autre : « Top 3 »
+(`ballondor.html`) et « Top 10 » (`ballondor-top10.html`).
+
 Visuel « top 3 » sur le template `ballondor-top3.png` : trois cases, une photo de joueur par case,
 détourée par IA comme sur les pages joueur (mêmes réglages : moteur, rognage, opacité, ombre).
 
@@ -57,8 +60,12 @@ détourée par IA comme sur les pages joueur (mêmes réglages : moteur, rognage
   inclinés de la case (option « Garder chaque joueur dans sa case »). « Recentrer dans la case »
   le replace au départ.
 - Une photo déposée sur l'image va dans la case la plus proche.
-- Titre facultatif (étape 2) : texte en gras, taille, couleur (Blanc, Or ou au choix), police Inter ou
-  Anton. On le déplace à la souris ; il est réduit automatiquement s'il est trop long.
+- Titre facultatif (étape 2) : texte en gras, taille, couleur (Blanc, Or ou au choix) et police.
+  On le déplace à la souris ; il est réduit automatiquement s'il est trop long.
+- Polices du titre et des noms : 10 polices Google Fonts (Inter, Montserrat, Poppins, Oswald, Barlow
+  Condensed, Bebas Neue, Anton, Teko, Playfair Display, Cinzel), chaque bouton écrit dans sa police.
+  La liste est dans `js/config.js` (`fonts`) ; pour en ajouter une, ajoutez-la aussi au lien Google Fonts
+  de `ballondor.html` et `ballondor-top10.html`.
 - Nom de chaque joueur (dans sa carte) : affiché dans la bande noire sous la case, centré sur la largeur
   de la case et réduit s'il dépasse. Chaque nom se déplace à la souris ; police, couleur et taille
   (communes aux trois noms) dans la carte « Noms des joueurs ». Les noms servent aussi au nom du fichier.
@@ -67,6 +74,25 @@ détourée par IA comme sur les pages joueur (mêmes réglages : moteur, rognage
   claire du logo (`logoOnDark` dans `js/config.js`) est utilisée quand elle existe.
 - Les cases (centre, sol, taille, contour) sont décrites dans `js/config.js`, `playerLayouts.ballondor`,
   en pixels de l'image finale.
+
+## Ballon d'Or — Top 10 (`ballondor-top10.html`)
+
+Visuel « top 10 » sur le template `ballondor-top10.png` (10 filets dorés) : pour chaque ligne, on choisit
+le joueur dans un menu (liste alphabétique). La ligne affiche, de gauche à droite : le rang (chiffres
+dorés, dessinés par l'outil), la vignette ronde du joueur, son nom et le logo de son club.
+
+- Un joueur déjà classé est grisé dans les autres menus. « Nouveau classement » vide les dix lignes.
+- Vignettes et logos de club viennent du CDN Sportmonks (`cdn.sportmonks.com`, 150 × 150 px, fond
+  transparent), chargés en CORS pour que l'export fonctionne. Il faut donc une connexion internet.
+- Noms : police (même liste que le Top 3), couleur et taille communes aux dix lignes ; un nom trop long
+  est réduit.
+- Logo du site facultatif, calé en haut à droite au-dessus du classement (`logo` dans la config).
+- Les candidats sont dans `js/ballondor-candidates.js` (`id`, `name`, `img`, `club`), les clubs dans
+  `BALLONDOR_CLUBS` du même fichier (clubs à jour des transferts de l'été 2026 : Rodri au Barça,
+  Ferran Torres au PSG, Cucurella au Real Madrid). Pour un transfert, changez la clé `club` du joueur ;
+  pour un nouveau club, ajoutez son logo Sportmonks (`images/soccer/teams/<id % 32>/<id>.png`).
+- Les lignes (centres verticaux), le rang, la vignette, le nom, le logo du club et la zone du logo du site
+  sont dans `js/config.js`, `ballondorTop10`, en pixels de l'image finale.
 
 ## Ajouter un site et son template (pour toute l'équipe)
 
