@@ -5,9 +5,12 @@
 
   const CFG = window.APP_CONFIG;
   const I18N = window.APP_I18N;
-  const L = CFG.ballondorTop10;
-  const W = CFG.width;
-  const H = CFG.height;
+  // Format choisi par la page (data-layout sur <body>) : 16:9 par défaut, ou 9:16
+  const L = CFG[document.body.dataset.layout] || CFG.ballondorTop10;
+  const W = L.width || CFG.width;
+  const H = L.height || CFG.height;
+  // Classement et site sont partagés entre les formats ; le style des noms est propre à chacun
+  const NAMES_KEY = `${L.namesKey || 'top10'}:names`;
   const MIME = { jpeg: 'image/jpeg', webp: 'image/webp', png: 'image/png' };
   const EXT = { 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/png': '.png' };
   const QUALITY = 0.92;
@@ -130,7 +133,7 @@
       const saved = prefs.get('top10:ranking', []);
       return Array.from({ length: COUNT }, (_, i) => (byId.has(String(saved[i])) ? String(saved[i]) : ''));
     })(),
-    names: { font: 'inter', color: '#ffffff', size: L.name.size, ...prefs.get('top10:names', {}) },
+    names: { font: 'inter', color: '#ffffff', size: L.name.size, ...prefs.get(NAMES_KEY, {}) },
   };
   const thumbs = new Map(); // id → vignette chargée (ou null si indisponible)
   const clubLogos = new Map(); // clé du club → logo chargé (ou null si indisponible)
@@ -268,7 +271,7 @@
     c.save();
     c.beginPath();
     c.arc(x, y, r, 0, Math.PI * 2);
-    c.lineWidth = 1.5;
+    c.lineWidth = r * 0.075;
     c.strokeStyle = '#d4a93c';
     c.stroke();
     c.restore();
@@ -456,7 +459,7 @@
 
   function setNames(changes) {
     Object.assign(state.names, changes);
-    prefs.set('top10:names', state.names);
+    prefs.set(NAMES_KEY, state.names);
     refreshUI();
     draw();
   }

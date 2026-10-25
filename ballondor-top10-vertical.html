@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ballon d'Or Top 10 9:16 — Preview Match Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@700&family=Bebas+Neue&family=Cinzel:wght@700&family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@800&family=Oswald:wght@600&family=Playfair+Display:wght@800&family=Poppins:wght@700&family=Teko:wght@600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-layout="ballondorTop10Vertical" class="portrait">
+  <!-- Visuel Ballon d'Or « Top 10 » vertical (9:16, 1080 × 1920) : même outil que ballondor-top10.html.
+       Logique : js/top10.js ; positions dans ballondorTop10Vertical (js/config.js) ; candidats dans js/ballondor-candidates.js. -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">VS</div>
+      <div>
+        <h1>Preview Match Studio</h1>
+        <p data-i18n="top10.subtitleVertical">Ballon d'Or · top 10 · 1080 × 1920 px</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a class="btn ghost" href="index.html" data-i18n="player.back">← Visuels de match</a>
+      <nav class="seg" aria-label="Pages photo joueur" data-i18n-attr="aria-label:player.navAria">
+        <a href="player.html" data-i18n="player.nav1">1 joueur</a>
+        <a href="player2.html" data-i18n="player.nav2">2 joueurs</a>
+        <a href="ballondor.html" aria-current="page" data-i18n="player.nav3">Ballon d'Or</a>
+      </nav>
+      <select class="select lang-select" id="langSelect" aria-label="Langue" data-i18n-attr="aria-label:aria.lang"></select>
+      <button class="btn ghost" id="resetBtn" type="button" data-i18n="top10.reset">Nouveau classement</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage-col">
+      <div class="stage" id="stage">
+        <canvas id="editor" tabindex="0" aria-label="Zone d'édition du visuel" data-i18n-attr="aria-label:aria.canvas"></canvas>
+      </div>
+      <div class="stage-bar">
+        <span id="statusText"></span>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <section class="card">
+        <h2><span data-i18n="visual.title">Visuel</span></h2>
+        <select class="select" id="visualSelect" aria-label="Visuel" data-i18n-attr="aria-label:visual.title">
+          <option value="ballondor.html" data-i18n="visual.top3">Top 3</option>
+          <option value="ballondor-top10.html" data-i18n="visual.top10">Top 10 - 16/9</option>
+          <option value="ballondor-top10-vertical.html" selected data-i18n="visual.top10Vertical">Top 10 - 9/16</option>
+        </select>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">1</span><span data-i18n="site.title">Site</span></h2>
+        <select class="select" id="siteSelect" aria-label="Site" data-i18n-attr="aria-label:site.title"></select>
+        <small class="note" data-i18n="ballondor.siteNote">Logo du site en haut à droite (facultatif).</small>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">2</span><span data-i18n="top10.rankingTitle">Classement</span></h2>
+        <ol class="rank-list" id="rankList"></ol>
+        <small class="note" data-i18n="top10.rankingNote">Chaque joueur choisi apparaît sur sa ligne, avec sa vignette et le logo de son club (Sportmonks).</small>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">3</span><span data-i18n="names.title">Noms des joueurs</span></h2>
+        <div class="font-field"><span data-i18n="title.font">Police</span>
+          <div class="font-grid" id="namesFont" role="group" aria-label="Police" data-i18n-attr="aria-label:title.font"></div>
+        </div>
+        <div class="inline-field">
+          <span data-i18n="title.color">Couleur</span>
+          <span class="color-pick" id="namesSwatches">
+            <button type="button" class="swatch" data-color="#ffffff" style="background:#ffffff" title="Blanc" data-i18n-attr="title:title.white;aria-label:title.white"></button>
+            <button type="button" class="swatch" data-color="#f5c542" style="background:#f5c542" title="Or" data-i18n-attr="title:title.gold;aria-label:title.gold"></button>
+            <input type="color" id="namesColor" value="#ffffff" aria-label="Couleur" data-i18n-attr="aria-label:title.color">
+          </span>
+        </div>
+        <label class="range"><span data-i18n="title.size">Taille</span>
+          <input type="range" id="namesSize" min="20" max="60" step="1">
+          <output id="namesSizeOut"></output>
+        </label>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">4</span><span data-i18n="export.title">Aperçu &amp; téléchargement</span></h2>
+        <button class="btn primary block" id="previewBtn" type="button" data-i18n="export.preview">Prévisualiser</button>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="previewDialog" class="dialog" aria-labelledby="previewTitle">
+    <div class="dialog-head">
+      <h3 id="previewTitle" data-i18n="dialog.title">Aperçu final</h3>
+      <button class="icon-btn" type="button" data-close aria-label="Fermer" data-i18n-attr="aria-label:dialog.close">×</button>
+    </div>
+    <div class="preview-img">
+      <img id="previewImg" alt="Aperçu du visuel exporté" data-i18n-attr="alt:dialog.imgAlt">
+      <p class="preview-error" id="previewError" hidden></p>
+    </div>
+    <div class="dialog-foot">
+      <label class="field grow"><span data-i18n="dialog.filename">Nom du fichier</span>
+        <span class="filename"><input type="text" id="filenameInput" spellcheck="false"><em id="extLabel">.jpg</em></span>
+      </label>
+      <label class="field"><span data-i18n="dialog.format">Format</span>
+        <select class="select" id="formatSelect">
+          <option value="jpeg">JPG</option>
+          <option value="webp">WebP</option>
+          <option value="png">PNG</option>
+        </select>
+      </label>
+      <span class="preview-meta" id="previewMeta"></span>
+      <div class="row-btns">
+        <button class="btn ghost" type="button" data-close data-i18n="dialog.back">Retour à l'édition</button>
+        <button class="btn primary" type="button" id="downloadBtn" data-i18n="dialog.download">Télécharger</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/ballondor-candidates.js"></script>
+  <script src="js/top10.js"></script>
+</body>
+</html>

@@ -55,7 +55,8 @@ sont détourées l'une après l'autre. Le sélecteur « 1 joueur / 2 joueurs » 
 ## Ballon d'Or (`ballondor.html`)
 
 Le menu « Visuel » en haut du panneau passe d'un visuel Ballon d'Or à l'autre : « Top 3 »
-(`ballondor.html`) et « Top 10 » (`ballondor-top10.html`).
+(`ballondor.html`), « Top 10 - 16/9 » (`ballondor-top10.html`) et « Top 10 - 9/16 »
+(`ballondor-top10-vertical.html`).
 
 Visuel « top 3 » sur le template `ballondor-top3.png` : trois cases, une photo de joueur par case,
 détourée par IA comme sur les pages joueur (mêmes réglages : moteur, rognage, opacité, ombre).
@@ -79,7 +80,13 @@ détourée par IA comme sur les pages joueur (mêmes réglages : moteur, rognage
 - Les cases (centre, sol, taille, contour) sont décrites dans `js/config.js`, `playerLayouts.ballondor`,
   en pixels de l'image finale.
 
-## Ballon d'Or — Top 10 (`ballondor-top10.html`)
+## Ballon d'Or — Top 10 (`ballondor-top10.html`, `ballondor-top10-vertical.html`)
+
+Deux formats, même outil (`js/top10.js`) : 16/9 en 1200 × 675 px (`ballondor-top10.png`, config
+`ballondorTop10`) et 9/16 en 1080 × 1920 px pour les stories (`ballondor-top10-vertical.png`, config
+`ballondorTop10Vertical`). La page choisit son format avec `data-layout` sur `<body>`. Le classement et le
+site sont partagés entre les deux formats : on remplit le top 10 une fois et on exporte les deux ; le style
+des noms (police, couleur, taille) est enregistré à part pour chaque format.
 
 Visuel « top 10 » sur le template `ballondor-top10.png` (10 filets dorés) : pour chaque ligne, on choisit
 le joueur dans un menu (liste alphabétique). La ligne affiche, de gauche à droite : le rang (chiffres

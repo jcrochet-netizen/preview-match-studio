@@ -149,6 +149,26 @@ window.APP_CONFIG = {
     { id: 'decor', luma: 0.42, contrast: 1.1, saturation: 0.95, warmth: 0.04, grade: 0.3, rim: { strength: 0.7, width: 9, color: 'ambient' } },
   ],
 
+  // Visuel « Ballon d'Or — Top 10 » vertical 9:16 (ballondor-top10-vertical.html) : mêmes réglages que
+  // ballondorTop10, en px de l'image finale (1080 × 1920). Classement et site partagés avec le 16:9 ;
+  // style des noms enregistré à part (namesKey), la taille n'étant pas la même.
+  ballondorTop10Vertical: {
+    template: 'assets/templates/ballondor-top10-vertical.png',
+    width: 1080,
+    height: 1920,
+    siteLogo: 'optional',
+    sport: 'football',
+    dark: true,
+    filePrefix: 'ballon-dor-top10-vertical',
+    namesKey: 'top10v',
+    rows: [568, 646, 724, 801, 879, 956, 1034, 1110, 1188, 1266],
+    rank: { x: 202, size: 46 },
+    thumb: { x: 278, r: 30 },
+    name: { x: 326, maxW: 500, size: 38 },
+    club: { x: 872, size: 50 },
+    logo: { x: 870, y: 48, w: 160, h: 54 },
+  },
+
   // Polices du titre et des noms (pages Ballon d'Or), chargées depuis Google Fonts dans ces pages.
   //   id : valeur enregistrée ; family / weight : police dessinée sur l'image ; fallback : police de secours
   fonts: [
