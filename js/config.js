@@ -51,9 +51,29 @@ window.APP_CONFIG = {
     },
   ],
 
-  // Pages de test « photo joueur » (player.html, player2.html) : fond commun à tous les sites
-  // (le site choisi ne donne alors que le logo en haut à droite)
-  playerTemplate: 'assets/templates/base.png',
+  // Pages « photo joueur » : une mise en page par page (attribut data-layout de <body>).
+  //   template   : fond commun à tous les sites (le site choisi ne donne que le logo en haut à droite)
+  //   players    : nombre de joueurs placés librement (boutons gauche / centre / droite)
+  //   slots      : cases fixes ; chaque joueur est posé sur le sol de sa case (px de l'image finale) :
+  //                x = centre, floor = hauteur du sol, maxW / maxH = taille maximale à 100 %,
+  //                side = libellé de position, clip = contour de la case [[x, y], …]
+  //   siteLogo   : 'optional' → menu des sites (tous sports) avec « Aucun logo »
+  //   filePrefix : début du nom de fichier exporté
+  playerLayouts: {
+    player: { template: 'assets/templates/base.png', players: 1 },
+    player2: { template: 'assets/templates/base.png', players: 2 },
+    // Trois panneaux inclinés : sol lumineux à y = 596, séparateurs mesurés sur le template
+    ballondor: {
+      template: 'assets/templates/ballondor-top3.png',
+      siteLogo: 'optional',
+      filePrefix: 'ballon-dor',
+      slots: [
+        { x: 218, floor: 596, maxW: 290, maxH: 400, side: 'left', clip: [[197, 0], [538, 0], [368, 596], [27, 596]] },
+        { x: 580, floor: 596, maxW: 290, maxH: 400, side: 'center', clip: [[542, 0], [890, 0], [729, 596], [372, 596]] },
+        { x: 962, floor: 596, maxW: 310, maxH: 400, side: 'right', clip: [[894, 0], [1279, 0], [1118, 596], [733, 596]] },
+      ],
+    },
+  },
 
   // Logo du site : marge par rapport aux bords haut et droit, hauteur par défaut
   siteLogo: { margin: 32, defaultHeight: 56 },

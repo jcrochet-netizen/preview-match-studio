@@ -63,8 +63,8 @@ code { font-size: 0.92em; background: rgba(255, 255, 255, 0.06); padding: 1px 5p
 }
 .brand h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
 .brand p { margin: 0; color: var(--muted); font-size: 12.5px; }
-.topbar-actions { display: flex; align-items: center; gap: 12px; }
-.lang-select { width: auto; padding-top: 7px; padding-bottom: 7px; font-weight: 600; }
+.topbar-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 12px; }
+.topbar-actions .lang-select { flex: none; width: auto; padding-top: 7px; padding-bottom: 7px; font-weight: 600; }
 
 .seg {
   display: inline-flex;
@@ -438,6 +438,7 @@ output { text-align: right; font-size: 12.5px; color: var(--text); font-variant-
 .compare figcaption { margin-top: 4px; color: var(--muted); font-size: 12px; text-align: center; }
 .seg-block { display: flex; width: 100%; }
 .player-anchors { margin-top: 12px; }
+.recenter-btn { margin-top: 12px; }
 .inline-field {
   display: flex;
   align-items: center;
@@ -544,6 +545,11 @@ output { text-align: right; font-size: 12.5px; color: var(--text); font-variant-
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 /* ---------- Responsive ---------- */
+/* Barre du haut sur deux lignes : elle ne reste plus collée en haut, l'image prend sa place */
+@media (max-width: 1279px) {
+  .topbar { position: static; }
+  .stage-col { top: 16px; }
+}
 @media (max-width: 1020px) {
   .layout { grid-template-columns: 1fr; padding: 16px; }
   .stage-col { position: static; }

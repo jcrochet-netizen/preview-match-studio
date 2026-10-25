@@ -9,9 +9,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
 </head>
-<body data-players="1">
+<body data-layout="player">
   <!-- Page de test : photo(s) de joueur détourée(s) par IA (dans le navigateur) et posée(s) sur le template.
-       Logique commune : js/player.js ; data-players donne le nombre de joueurs. -->
+       Logique commune : js/player.js ; data-layout renvoie à playerLayouts dans js/config.js. -->
   <header class="topbar">
     <div class="brand">
       <div class="brand-mark" aria-hidden="true">VS</div>
@@ -22,9 +22,10 @@
     </div>
     <div class="topbar-actions">
       <a class="btn ghost" href="index.html" data-i18n="player.back">← Visuels de match</a>
-      <nav class="seg" aria-label="Nombre de joueurs" data-i18n-attr="aria-label:player.navAria">
+      <nav class="seg" aria-label="Pages photo joueur" data-i18n-attr="aria-label:player.navAria">
         <a href="player.html" aria-current="page" data-i18n="player.nav1">1 joueur</a>
-        <a href="player2.html"  data-i18n="player.nav2">2 joueurs</a>
+        <a href="player2.html" data-i18n="player.nav2">2 joueurs</a>
+        <a href="ballondor.html" data-i18n="player.nav3">Ballon d'Or</a>
       </nav>
       <select class="select lang-select" id="langSelect" aria-label="Langue" data-i18n-attr="aria-label:aria.lang"></select>
       <button class="btn ghost" id="resetBtn" type="button" data-i18n="player.new">Nouvelle photo</button>
@@ -101,6 +102,7 @@
         <button type="button" data-anchor="center" data-i18n="player.center">Au centre</button>
         <button type="button" data-anchor="right" data-i18n="player.right">À droite</button>
       </div>
+      <button class="btn small ghost recenter-btn" type="button" data-role="recenter" hidden data-i18n="player.recenter">Recentrer dans la case</button>
       <label class="range"><span data-i18n="team.size">Taille</span>
         <input type="range" min="20" max="250" step="1" value="100" data-role="size">
         <output data-role="sizeOut"></output>

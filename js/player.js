@@ -1,5 +1,6 @@
-/* Preview Match Studio — pages de test : photo(s) de joueur détourée(s) par IA et posée(s) sur le template.
-   Le nombre de joueurs vient de la page : <body data-players="1"> (player.html) ou "2" (player2.html). */
+/* Preview Match Studio — pages « photo joueur » : photo(s) de joueur détourée(s) par IA et posée(s) sur un template.
+   La mise en page vient de <body data-layout="…"> et de playerLayouts (js/config.js) : joueurs placés
+   librement (player.html, player2.html) ou cases fixes (ballondor.html). */
 (() => {
   'use strict';
 
@@ -8,7 +9,11 @@
   const W = CFG.width;
   const H = CFG.height;
   const SPORT = 'nba';
-  const COUNT = Math.min(2, Math.max(1, Number(document.body.dataset.players) || 1));
+  const LAYOUT_ID = CFG.playerLayouts[document.body.dataset.layout] ? document.body.dataset.layout : 'player';
+  const LAYOUT = CFG.playerLayouts[LAYOUT_ID];
+  const SLOTS = LAYOUT.slots || null; // cases fixes : chaque joueur est posé sur le sol de sa case
+  const COUNT = SLOTS ? SLOTS.length : Math.min(2, Math.max(1, LAYOUT.players || 1));
+  const OPTIONAL_LOGO = LAYOUT.siteLogo === 'optional';
   // Moteur de détourage : IMG.LY Background Removal (licence AGPL), exécuté dans le navigateur.
   // Le modèle est téléchargé depuis le CDN d'IMG.LY au premier usage, puis gardé en cache.
   const ENGINE_URL = 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm';
@@ -23,6 +28,8 @@
   // Position de départ de chaque joueur, et largeur maximale à 100 % (en part de l'image)
   const START = COUNT === 1 ? ['left'] : ['left', 'right'];
   const MAX_WIDTH = COUNT === 1 ? 0.6 : 0.45;
+  const startX = (i) => (SLOTS ? SLOTS[i].x : ANCHORS[START[i]]);
+  const floorY = (i) => (SLOTS ? SLOTS[i].floor : H);
 
   // ---------- Utilitaires ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -212,18 +219,24 @@
   const formatSize = (bytes) => (bytes < 1048576
     ? t('size.kb', { n: num(Math.round(bytes / 1024), 0) })
     : t('size.mb', { n: num(bytes / 1048576, 1) }));
-  // Clé propre à la page à deux joueurs quand elle existe (« player2.xxx »), sinon « player.xxx »
-  const pageKey = (key) => (COUNT === 2 && I18N.dict.fr[`player2.${key}`] ? `player2.${key}` : `player.${key}`);
+  // Clé propre à la page quand elle existe (« player2.xxx », « ballondor.xxx »), sinon « player.xxx »
+  const pageKey = (key) => (I18N.dict.fr[`${LAYOUT_ID}.${key}`] ? `${LAYOUT_ID}.${key}` : `player.${key}`);
   const playerLabel = (i) => (COUNT === 1 ? t('player.single') : t('player.slot', { n: i + 1 }));
+  const SIDE_KEYS = { left: 'team.left', center: 'player.middle', right: 'team.right' };
+  function sideText(i) {
+    if (SLOTS) return SLOTS[i].side ? t(SIDE_KEYS[SLOTS[i].side]) : '';
+    return COUNT === 2 ? t(SIDE_KEYS[START[i]]) : '';
+  }
 
   // ---------- État ----------
   const makePlayer = (i) => ({
+    index: i,
     photo: null, // { file, name, url }
     rawCutout: null, // canvas du joueur détouré et recadré, tel que rendu par le modèle
     cutout: null, // version affichée (renforcée ou non)
     placed: false, // position déjà choisie pour cette photo
-    x: ANCHORS[START[i]], // centre horizontal
-    y: H, // bas du joueur
+    x: startX(i), // centre horizontal
+    y: floorY(i), // bas du joueur
     scale: 1,
     flip: false,
     trim: prefs.get('player:trim', 2), // pixels rognés sur le contour (image finale, joueur à 100 %)
@@ -242,6 +255,7 @@
     hover: -1,
     shadow: prefs.get('player:shadow', true),
     harden: prefs.get('player:harden', true),
+    clip: prefs.get(`${LAYOUT_ID}:clip`, true), // cases fixes : joueur découpé au contour de sa case
     guides: [],
   };
   let drag = null;
@@ -262,6 +276,7 @@
     engineSelect: $('#engineSelect'),
     hardenToggle: $('#hardenToggle'),
     shadowToggle: $('#shadowToggle'),
+    clipToggle: $('#clipToggle'),
     previewBtn: $('#previewBtn'),
     dialog: $('#previewDialog'),
     previewImg: $('#previewImg'),
@@ -277,16 +292,17 @@
   const cards = [];
 
   // ---------- Géométrie ----------
-  // À 100 %, un joueur occupe 92 % de la hauteur (dans la limite de MAX_WIDTH), posé en bas.
-  // Échelle de la photo détourée quand le joueur est à 100 %
-  function baseScale(img) {
+  // Échelle de la photo détourée quand le joueur est à 100 % : 92 % de la hauteur de l'image
+  // (dans la limite de MAX_WIDTH), ou la taille maximale de sa case.
+  function baseScale(img, i) {
     const { w, h } = imgSize(img);
+    if (SLOTS) return Math.min(SLOTS[i].maxH / h, SLOTS[i].maxW / w);
     return Math.min((H * 0.92) / h, (W * MAX_WIDTH) / w);
   }
 
   function playerRect(p) {
     const { w, h } = imgSize(p.cutout);
-    const base = baseScale(p.cutout);
+    const base = baseScale(p.cutout, p.index);
     const dw = w * base * p.scale;
     const dh = h * base * p.scale;
     return { x: p.x - dw / 2, y: p.y - dh, w: dw, h: dh };
@@ -299,9 +315,30 @@
     return anchor === 'left' ? Math.max(ANCHORS.left, half) : Math.min(ANCHORS.right, W - half);
   }
 
+  // Emplacement vide (cliquer ou déposer la photo) : au centre de la case, ou à la position de départ
   function slotRect(i) {
+    if (SLOTS) {
+      const sl = SLOTS[i];
+      const w = Math.min(sl.maxW, 240);
+      const h = Math.min(sl.maxH * 0.6, 220);
+      return { x: sl.x - w / 2, y: sl.floor - sl.maxH / 2 - h / 2, w, h };
+    }
     const s = 260;
     return { x: ANCHORS[START[i]] - s / 2, y: (H - s) / 2, w: s, h: s };
+  }
+
+  // Case la plus proche horizontalement (photo déposée sur l'image)
+  function nearestSlot(pt) {
+    let best = 0;
+    SLOTS.forEach((sl, i) => { if (Math.abs(pt.x - sl.x) < Math.abs(pt.x - SLOTS[best].x)) best = i; });
+    return best;
+  }
+
+  function clipToSlot(c, i) {
+    c.beginPath();
+    SLOTS[i].clip.forEach(([x, y], j) => (j ? c.lineTo(x, y) : c.moveTo(x, y)));
+    c.closePath();
+    c.clip();
   }
 
   const inRect = (p, r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
@@ -323,12 +360,12 @@
     return { x: ((e.clientX - r.left) * W) / r.width, y: ((e.clientY - r.top) * H) / r.height };
   }
 
-  // Magnétisme : bas de l'image, positions gauche / centre / droite, symétrie avec l'autre joueur
+  // Magnétisme : sol, positions gauche / centre / droite (ou centre de la case), symétrie avec l'autre joueur
   function snap(i, x, y) {
     const p = state.players[i];
     const guides = [];
-    if (Math.abs(y - H) < SNAP) y = H;
-    const targets = Object.keys(ANCHORS).map((a) => anchorX(p, a));
+    if (Math.abs(y - floorY(i)) < SNAP) y = floorY(i);
+    const targets = SLOTS ? [SLOTS[i].x] : Object.keys(ANCHORS).map((a) => anchorX(p, a));
     const other = state.players[1 - i];
     if (COUNT === 2 && other.cutout) targets.push(W - other.x);
     const target = targets.find((tx) => Math.abs(x - tx) < SNAP);
@@ -361,6 +398,7 @@
       if (!p.cutout) return;
       const r = playerRect(p);
       c.save();
+      if (SLOTS && state.clip) clipToSlot(c, i);
       if (state.shadow) {
         c.shadowColor = 'rgba(0, 0, 0, 0.45)';
         c.shadowBlur = 36 * k;
@@ -496,6 +534,7 @@
         before: q('before'),
         after: q('after'),
         anchors: q('anchors'),
+        recenter: q('recenter'),
         size: q('size'),
         sizeOut: q('sizeOut'),
         flip: q('flip'),
@@ -520,10 +559,14 @@
         card.drop.classList.remove('is-over');
         if (!state.players[i].busy && e.dataTransfer.files[0]) setPhoto(i, e.dataTransfer.files[0]);
       });
+      // Cases fixes : « Recentrer dans la case » remplace les boutons gauche / centre / droite
+      card.anchors.hidden = !!SLOTS;
+      card.recenter.hidden = !SLOTS;
       card.anchors.addEventListener('click', (e) => {
         const b = e.target.closest('button[data-anchor]');
         if (b) setAnchor(i, b.dataset.anchor);
       });
+      card.recenter.addEventListener('click', () => recenter(i));
       card.size.addEventListener('input', () => {
         state.players[i].scale = card.size.value / 100;
         state.selected = i;
@@ -564,7 +607,7 @@
     state.players.forEach((p, i) => {
       const card = cards[i];
       card.label.textContent = playerLabel(i);
-      card.side.textContent = COUNT === 2 ? t(START[i] === 'left' ? 'team.left' : 'team.right') : '';
+      card.side.textContent = sideText(i);
       card.root.classList.toggle('is-selected', state.selected === i && !!p.cutout);
 
       const photoSrc = p.photo ? p.photo.url : '';
@@ -598,6 +641,7 @@
         b.disabled = !p.cutout;
         b.setAttribute('aria-pressed', String(!!p.cutout && Math.abs(p.x - anchorX(p, b.dataset.anchor)) < 1));
       });
+      card.recenter.disabled = !p.cutout;
       card.size.disabled = !p.cutout;
       card.size.value = Math.round(p.scale * 100);
       card.sizeOut.textContent = pct(p.scale);
@@ -615,13 +659,14 @@
     els.hardenToggle.checked = state.harden;
     els.hardenToggle.disabled = anyBusy;
     els.shadowToggle.checked = state.shadow;
+    if (els.clipToggle) els.clipToggle.checked = state.clip;
 
     // Bandeau sur l'image pendant un détourage (celui qui tourne, pas ceux en attente)
     const activeIndex = state.players.findIndex((p) => p.busy && !p.queued);
     const active = state.players[activeIndex];
     els.stageBusy.hidden = !active;
     const busyText = active && active.progress
-      ? (COUNT === 2 ? `${playerLabel(activeIndex)} · ${active.progress.text}` : active.progress.text) : '';
+      ? (COUNT > 1 ? `${playerLabel(activeIndex)} · ${active.progress.text}` : active.progress.text) : '';
     els.stageBusyText.textContent = busyText;
 
     const ready = state.players.every((p) => p.cutout) && !anyBusy;
@@ -644,27 +689,30 @@
   }
 
   // ---------- Site & template ----------
-  const nbaSites = () => CFG.sites.filter((s) => !s.sports || s.sports.includes(SPORT));
+  // Sites NBA, ou tous les sites avec « Aucun logo » quand le logo est facultatif
+  const pageSites = () => (OPTIONAL_LOGO ? CFG.sites : CFG.sites.filter((s) => !s.sports || s.sports.includes(SPORT)));
 
   function populateSites() {
-    els.siteSelect.replaceChildren(...nbaSites().map((s) => new Option(s.name, s.id)));
+    const options = pageSites().map((s) => new Option(s.name, s.id));
+    if (OPTIONAL_LOGO) options.unshift(new Option(t('player.noLogo'), ''));
+    els.siteSelect.replaceChildren(...options);
+    els.siteSelect.value = state.site ? state.site.id : '';
   }
 
   async function selectSite(id) {
     const token = ++siteToken;
-    const sites = nbaSites();
-    const site = sites.find((s) => s.id === id) || sites[0];
-    if (!site) return;
-    const templatePath = CFG.playerTemplate || site.template;
+    const sites = pageSites();
+    const site = sites.find((s) => s.id === id) || (OPTIONAL_LOGO ? null : sites[0]);
+    const templatePath = LAYOUT.template || (site && site.template);
     const [template, logo] = await Promise.all([
       templatePath ? loadImage(templatePath).catch(() => null) : null,
-      site.logo ? loadImage(site.logo).catch(() => null) : null,
+      site && site.logo ? loadImage(site.logo).catch(() => null) : null,
     ]);
     if (token !== siteToken) return;
-    state.site = { ...site, img: logo ? (trimTransparent(logo, 1200) || logo) : null };
+    state.site = site ? { ...site, img: logo ? (trimTransparent(logo, 1200) || logo) : null } : null;
     state.template = template;
-    els.siteSelect.value = site.id;
-    prefs.set('player:site', site.id);
+    els.siteSelect.value = site ? site.id : '';
+    prefs.set(`${LAYOUT_ID}:site`, site ? site.id : '');
     refreshUI();
     draw();
   }
@@ -733,7 +781,7 @@
     let c = p.rawCutout;
     if (c && state.harden) c = hardenAlpha(c);
     // Rognage exprimé en pixels de l'image finale, converti en pixels de la photo
-    if (c && p.trim > 0) c = erodeAlpha(c, p.trim / baseScale(c));
+    if (c && p.trim > 0) c = erodeAlpha(c, p.trim / baseScale(c, i));
     p.cutout = c;
     if (p.cutout) cards[i].after.src = p.cutout.toDataURL('image/png');
   }
@@ -768,8 +816,8 @@
       applyCutout(i);
       if (!p.placed) {
         p.scale = 1;
-        p.y = H;
-        p.x = anchorX(p, START[i]);
+        p.y = floorY(i);
+        p.x = SLOTS ? SLOTS[i].x : anchorX(p, START[i]);
         p.placed = true;
       }
       state.selected = i;
@@ -805,6 +853,15 @@
     const p = state.players[i];
     p.x = anchorX(p, anchor);
     p.y = H;
+    state.selected = i;
+    refreshUI();
+    draw();
+  }
+
+  function recenter(i) {
+    const p = state.players[i];
+    p.x = SLOTS[i].x;
+    p.y = floorY(i);
     state.selected = i;
     refreshUI();
     draw();
@@ -875,8 +932,9 @@
     state.selected = -1;
     refreshUI();
     draw();
-    const names = state.players.map((p) => slugify(p.photo.name)).filter(Boolean).join('-vs-');
-    els.filenameInput.value = [names, state.site && state.site.id].filter(Boolean).join('-');
+    const names = state.players.map((p) => slugify(p.photo.name)).filter(Boolean);
+    const base = LAYOUT.filePrefix ? [LAYOUT.filePrefix, ...names].join('-') : names.join('-vs-');
+    els.filenameInput.value = [base, state.site && state.site.id].filter(Boolean).join('-');
     els.previewImg.setAttribute('src', '');
     els.dialog.showModal();
     await renderPreview();
@@ -996,7 +1054,8 @@
       e.preventDefault();
       els.stage.classList.remove('is-over');
       const file = e.dataTransfer.files[0];
-      const i = COUNT === 2 && toLogical(e).x >= W / 2 ? 1 : 0;
+      const pt = toLogical(e);
+      const i = SLOTS ? nearestSlot(pt) : COUNT === 2 && pt.x >= W / 2 ? 1 : 0;
       if (file && !state.players[i].busy) setPhoto(i, file);
     });
     window.addEventListener('dragover', (e) => e.preventDefault());
@@ -1022,6 +1081,13 @@
       refreshUI();
       draw();
     });
+    if (els.clipToggle) {
+      els.clipToggle.addEventListener('change', () => {
+        state.clip = els.clipToggle.checked;
+        prefs.set(`${LAYOUT_ID}:clip`, state.clip);
+        draw();
+      });
+    }
     els.shadowToggle.addEventListener('change', () => {
       state.shadow = els.shadowToggle.checked;
       prefs.set('player:shadow', state.shadow);
@@ -1047,6 +1113,7 @@
       prefs.set('lang', lang);
       document.documentElement.lang = lang;
       applyStaticTexts();
+      populateSites();
       refreshUI();
       draw();
     });
@@ -1062,7 +1129,7 @@
   sizeCanvas();
   populateSites();
   refreshUI();
-  selectSite(prefs.get('player:site', ''));
+  selectSite(prefs.get(`${LAYOUT_ID}:site`, ''));
   if (document.fonts) document.fonts.ready.then(draw);
 
   // Exposé pour le débogage dans la console.

@@ -46,6 +46,19 @@ sont détourées l'une après l'autre. Le sélecteur « 1 joueur / 2 joueurs » 
   (ex. maillot jaune sur parquet jaune).
 - Préférez des photos où le joueur n'est coupé qu'en bas du cadre : une coupe sur le côté reste visible.
 
+## Ballon d'Or (`ballondor.html`)
+
+Visuel « top 3 » sur le template `ballondor-top3.png` : trois cases, une photo de joueur par case,
+détourée par IA comme sur les pages joueur (mêmes réglages : moteur, rognage, opacité, ombre).
+
+- Chaque joueur est posé sur le trait lumineux de sa case et, par défaut, découpé le long des bords
+  inclinés de la case (option « Garder chaque joueur dans sa case »). « Recentrer dans la case »
+  le replace au départ.
+- Une photo déposée sur l'image va dans la case la plus proche.
+- Le logo du site est facultatif (« Aucun logo » par défaut).
+- Les cases (centre, sol, taille, contour) sont décrites dans `js/config.js`, `playerLayouts.ballondor`,
+  en pixels de l'image finale.
+
 ## Ajouter un site et son template (pour toute l'équipe)
 
 Chaque site a son propre template : choisir le site dans le menu charge son fond et place son logo.
