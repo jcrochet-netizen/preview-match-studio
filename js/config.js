@@ -94,6 +94,8 @@ window.APP_CONFIG = {
       filePrefix: 'ballon-dor',
       // Titre en haut, entre le trophée et les projecteurs
       title: { x: 600, y: 92, size: 56, color: '#ffffff', maxW: 720 },
+      // Logo du site : même zone discrète que le Top 10 (120 × 40 px en haut à droite)
+      logo: { x: 1056, y: 24, w: 120, h: 40 },
       // Noms : dans la bande noire sous chaque case (y 596 → 657), centrés sur le trait de sol de la case
       slots: [
         { x: 218, floor: 596, maxW: 290, maxH: 400, side: 'left', clip: [[197, 0], [538, 0], [368, 596], [27, 596]],

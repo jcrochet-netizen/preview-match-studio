@@ -570,28 +570,31 @@
     const site = state.site;
     if (!site) return;
     const m = CFG.siteLogo.margin;
-    const h = site.height || CFG.siteLogo.defaultHeight;
+    // Zone du logo : celle du layout s'il en a une (logo plus discret), sinon en haut à droite
+    const box = LAYOUT.logo || { x: W * 0.68 - m, y: m, w: W * 0.32, h: Infinity };
+    const h = Math.min(site.height || CFG.siteLogo.defaultHeight, box.h);
     if (site.img) {
       const { w: iw, h: ih } = imgSize(site.img);
       let dh = h;
       let dw = (iw * h) / ih;
-      if (dw > W * 0.32) {
-        dw = W * 0.32;
+      if (dw > box.w) {
+        dw = box.w;
         dh = (ih * dw) / iw;
       }
-      c.drawImage(site.img, W - m - dw, m, dw, dh);
+      c.drawImage(site.img, box.x + box.w - dw, box.y, dw, dh);
       return;
     }
     c.save();
     c.font = `800 ${Math.round(h * 0.5)}px Inter, system-ui, sans-serif`;
     const padX = h * 0.42;
-    const bw = c.measureText(site.name).width + padX * 2;
+    const bw = Math.min(c.measureText(site.name).width + padX * 2, box.w);
+    const bx = box.x + box.w - bw;
     c.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    roundRect(c, W - m - bw, m, bw, h, h / 2);
+    roundRect(c, bx, box.y, bw, h, h / 2);
     c.fill();
     c.fillStyle = '#ffffff';
     c.textBaseline = 'middle';
-    c.fillText(site.name, W - m - bw + padX, m + h / 2 + 1);
+    c.fillText(site.name, bx + padX, box.y + h / 2 + 1, bw - padX * 2);
     c.restore();
   }
 
