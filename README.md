@@ -45,6 +45,8 @@ sont détourées l'une après l'autre. Le sélecteur « 1 joueur / 2 joueurs » 
 - L'option « Rendre le joueur bien opaque » comble les zones que le modèle laisse semi-transparentes
   (ex. maillot jaune sur parquet jaune).
 - Préférez des photos où le joueur n'est coupé qu'en bas du cadre : une coupe sur le côté reste visible.
+- « Harmoniser la lumière des joueurs » (5 crans, de Très sombre à Très lumineuse) rapproche la
+  luminosité des joueurs d'un même niveau, pour des photos venant de sources différentes.
 
 ## Ballon d'Or (`ballondor.html`)
 
@@ -58,8 +60,11 @@ détourée par IA comme sur les pages joueur (mêmes réglages : moteur, rognage
 - Titre facultatif (étape 2) : texte en gras, taille, couleur (Blanc, Or ou au choix), police Inter ou
   Anton. On le déplace à la souris ; il est réduit automatiquement s'il est trop long.
 - Nom de chaque joueur (dans sa carte) : affiché dans la bande noire sous la case, centré sur la largeur
-  de la case et réduit s'il dépasse. Les noms servent aussi au nom du fichier exporté.
-- Le logo du site est facultatif (« Aucun logo » par défaut).
+  de la case et réduit s'il dépasse. Chaque nom se déplace à la souris ; police, couleur et taille
+  (communes aux trois noms) dans la carte « Noms des joueurs ». Les noms servent aussi au nom du fichier.
+- Le logo du site est facultatif (« Aucun logo » par défaut) ; le menu propose les sites football
+  (Topmercato, Afrik-Foot, Sportsmole, FootballWhispers, Trivela). Sur ce fond sombre, la version
+  claire du logo (`logoOnDark` dans `js/config.js`) est utilisée quand elle existe.
 - Les cases (centre, sol, taille, contour) sont décrites dans `js/config.js`, `playerLayouts.ballondor`,
   en pixels de l'image finale.
 

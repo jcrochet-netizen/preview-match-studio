@@ -16,6 +16,8 @@
   const OPTIONAL_LOGO = LAYOUT.siteLogo === 'optional';
   const TITLE = LAYOUT.title || null; // titre facultatif (page Ballon d'Or)
   const NAME_SIZE = 28; // taille des noms sous les cases (réduite si le nom est plus large que la case)
+  // Harmonisation de la lumière : luminosité moyenne visée pour chaque cran (1 = très sombre … 5 = très lumineuse)
+  const LIGHT_TARGETS = [0.28, 0.35, 0.42, 0.5, 0.58];
   // Moteur de détourage : IMG.LY Background Removal (licence AGPL), exécuté dans le navigateur.
   // Le modèle est téléchargé depuis le CDN d'IMG.LY au premier usage, puis gardé en cache.
   const ENGINE_URL = 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm';
@@ -31,6 +33,9 @@
   const START = COUNT === 1 ? ['left'] : ['left', 'right'];
   const MAX_WIDTH = COUNT === 1 ? 0.6 : 0.45;
   const startX = (i) => (SLOTS ? SLOTS[i].x : ANCHORS[START[i]]);
+  // Nom sous la case : position mémorisée, sinon le centre de la zone prévue dans la config
+  const nameZone = (i) => (SLOTS && SLOTS[i].name) || null;
+  const nameStart = (i) => (nameZone(i) ? prefs.get(`${LAYOUT_ID}:namePos:${i}`, null) || { x: nameZone(i).x, y: nameZone(i).y } : { x: 0, y: 0 });
   const floorY = (i) => (SLOTS ? SLOTS[i].floor : H);
 
   // ---------- Utilitaires ----------
@@ -173,6 +178,49 @@
     return c;
   }
 
+  // Luminosité moyenne (0 à 1) des pixels bien opaques du joueur, mesurée sur une version réduite
+  function meanLuma(src) {
+    const k = Math.min(1, 400 / Math.max(src.width, src.height));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(src.width * k));
+    c.height = Math.max(1, Math.round(src.height * k));
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(src, 0, 0, c.width, c.height);
+    const d = x.getImageData(0, 0, c.width, c.height).data;
+    let sum = 0;
+    let count = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] > 200) {
+        sum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        count++;
+      }
+    }
+    return count ? sum / count / 255 : null;
+  }
+
+  // Amène la luminosité moyenne du joueur de « from » à « to » par une courbe gamma : les noirs et
+  // les blancs restent en place, seuls les tons moyens bougent (rendu naturel, couleurs conservées)
+  function adjustLight(src, from, to) {
+    const g = clamp(Math.log(to) / Math.log(from), 0.4, 2.5);
+    if (Math.abs(g - 1) < 0.01) return src;
+    const lut = new Uint8ClampedArray(256);
+    for (let v = 0; v < 256; v++) lut[v] = Math.round(255 * (v / 255) ** g);
+    const c = document.createElement('canvas');
+    c.width = src.width;
+    c.height = src.height;
+    const x = c.getContext('2d');
+    x.drawImage(src, 0, 0);
+    const img = x.getImageData(0, 0, c.width, c.height);
+    const p = img.data;
+    for (let i = 0; i < p.length; i += 4) {
+      p[i] = lut[p[i]];
+      p[i + 1] = lut[p[i + 1]];
+      p[i + 2] = lut[p[i + 2]];
+    }
+    x.putImageData(img, 0, 0);
+    return c;
+  }
+
   const prefs = {
     get(key, fallback) {
       try {
@@ -242,6 +290,9 @@
     scale: 1,
     flip: false,
     name: '', // nom affiché sous la case (cases fixes)
+    luma: null, // luminosité moyenne mesurée sur le joueur détouré
+    nameX: nameStart(i).x,
+    nameY: nameStart(i).y,
     trim: prefs.get('player:trim', 2), // pixels rognés sur le contour (image finale, joueur à 100 %)
     busy: false,
     queued: false,
@@ -258,6 +309,7 @@
     hover: -1,
     shadow: prefs.get('player:shadow', true),
     harden: prefs.get('player:harden', true),
+    light: prefs.get('player:light', { on: false, level: 3 }), // harmonisation de la lumière des joueurs
     clip: prefs.get(`${LAYOUT_ID}:clip`, true), // cases fixes : joueur découpé au contour de sa case
     // Titre : texte, taille, couleur, police et position (centre du texte), mémorisés
     title: TITLE ? {
@@ -266,9 +318,15 @@
     } : null,
     titleSelected: false,
     titleHover: false,
+    names: SLOTS && SLOTS.some((sl) => sl.name) ? {
+      font: 'inter', color: '#ffffff', size: NAME_SIZE, ...prefs.get(`${LAYOUT_ID}:names`, {}),
+    } : null,
+    nameSelected: -1,
+    nameHover: -1,
     guides: [],
   };
   let titleBox = null; // cadre du titre, calculé au dernier rendu (sélection et déplacement)
+  let nameBoxes = []; // cadres des noms, idem
   let drag = null;
   let siteToken = 0;
   let queue = Promise.resolve(); // les détourages passent l'un après l'autre
@@ -287,6 +345,9 @@
     engineSelect: $('#engineSelect'),
     hardenToggle: $('#hardenToggle'),
     shadowToggle: $('#shadowToggle'),
+    lightToggle: $('#lightToggle'),
+    lightLevel: $('#lightLevel'),
+    lightLevelOut: $('#lightLevelOut'),
     clipToggle: $('#clipToggle'),
     titleText: $('#titleText'),
     titleSize: $('#titleSize'),
@@ -295,6 +356,12 @@
     titleFont: $('#titleFont'),
     titleSwatches: $('#titleSwatches'),
     titleCenterBtn: $('#titleCenterBtn'),
+    namesSize: $('#namesSize'),
+    namesSizeOut: $('#namesSizeOut'),
+    namesColor: $('#namesColor'),
+    namesFont: $('#namesFont'),
+    namesSwatches: $('#namesSwatches'),
+    namesCenterBtn: $('#namesCenterBtn'),
     previewBtn: $('#previewBtn'),
     dialog: $('#previewDialog'),
     previewImg: $('#previewImg'),
@@ -449,28 +516,35 @@
     return { size, w: Math.min(w, maxW) };
   }
 
-  // Noms des joueurs dans la bande sous chaque case, centrés sur la largeur de la case
+  // Police du titre et des noms : Inter en gras, ou Anton (police d'affiche, grasse par nature)
+  const fontOf = (font) => (size) => (font === 'anton'
+    ? `${size}px Anton, Impact, sans-serif`
+    : `800 ${size}px Inter, system-ui, sans-serif`);
+  const titleFont = (size) => fontOf(state.title.font)(size);
+
+  // Noms des joueurs : par défaut dans la bande sous chaque case, centrés sur la largeur de la case ;
+  // déplaçables, et réduits s'ils sont plus larges que la case
   function drawNames(c, k) {
-    if (!SLOTS) return;
+    nameBoxes = [];
+    if (!state.names) return;
     state.players.forEach((p, i) => {
-      const zone = SLOTS[i].name;
+      const zone = nameZone(i);
       const text = p.name.trim();
       if (!zone || !text) return;
       c.save();
-      fitText(c, text, (size) => `800 ${size}px Inter, system-ui, sans-serif`, NAME_SIZE, zone.w);
+      const { size, w } = fitText(c, text, fontOf(state.names.font), state.names.size, zone.w);
       c.textAlign = 'center';
       c.textBaseline = 'middle';
-      c.fillStyle = '#ffffff';
+      c.fillStyle = state.names.color;
       c.shadowColor = 'rgba(0, 0, 0, 0.6)';
       c.shadowBlur = 8 * k;
-      c.fillText(text, zone.x, zone.y);
+      c.fillText(text, p.nameX, p.nameY);
       c.restore();
+      nameBoxes[i] = { x: p.nameX - w / 2 - 6, y: p.nameY - size * 0.65, w: w + 12, h: size * 1.3 };
     });
   }
 
-  const titleFont = (size) => (state.title.font === 'anton'
-    ? `${size}px Anton, Impact, sans-serif`
-    : `800 ${size}px Inter, system-ui, sans-serif`);
+  const hitName = (pt) => nameBoxes.findIndex((b) => b && inRect(pt, b));
 
   function drawTitle(c, k) {
     titleBox = null;
@@ -549,6 +623,13 @@
         c.strokeStyle = state.selected === i ? '#ff6b1f' : 'rgba(20, 24, 33, 0.5)';
         c.strokeRect(r.x, r.y, r.w, r.h);
       }
+    });
+    nameBoxes.forEach((b, i) => {
+      if (!b || (state.nameSelected !== i && state.nameHover !== i)) return;
+      c.setLineDash([6 * u, 4 * u]);
+      c.lineWidth = 1.5 * u;
+      c.strokeStyle = state.nameSelected === i ? '#ff6b1f' : 'rgba(255, 255, 255, 0.55)';
+      c.strokeRect(b.x, b.y, b.w, b.h);
     });
     if (titleBox && (state.titleSelected || state.titleHover)) {
       c.setLineDash([7 * u, 5 * u]);
@@ -746,6 +827,10 @@
     els.engineSelect.disabled = anyBusy;
     els.hardenToggle.checked = state.harden;
     els.hardenToggle.disabled = anyBusy;
+    els.lightToggle.checked = state.light.on;
+    els.lightLevel.value = state.light.level;
+    els.lightLevel.disabled = !state.light.on;
+    els.lightLevelOut.textContent = t(`player.light${state.light.level}`);
     els.shadowToggle.checked = state.shadow;
     if (els.clipToggle) els.clipToggle.checked = state.clip;
     if (state.title) {
@@ -754,6 +839,12 @@
       els.titleSizeOut.textContent = `${state.title.size} px`;
       els.titleColor.value = state.title.color;
       els.titleFont.value = state.title.font;
+    }
+    if (state.names) {
+      els.namesSize.value = state.names.size;
+      els.namesSizeOut.textContent = `${state.names.size} px`;
+      els.namesColor.value = state.names.color;
+      els.namesFont.value = state.names.font;
     }
 
     // Bandeau sur l'image pendant un détourage (celui qui tourne, pas ceux en attente)
@@ -784,8 +875,9 @@
   }
 
   // ---------- Site & template ----------
-  // Sites NBA, ou tous les sites avec « Aucun logo » quand le logo est facultatif
-  const pageSites = () => (OPTIONAL_LOGO ? CFG.sites : CFG.sites.filter((s) => !s.sports || s.sports.includes(SPORT)));
+  // Sites du sport de la page (NBA par défaut), précédés de « Aucun logo » quand le logo est facultatif
+  const siteSport = LAYOUT.sport || SPORT;
+  const pageSites = () => CFG.sites.filter((s) => !s.sports || s.sports.includes(siteSport));
 
   function populateSites() {
     const options = pageSites().map((s) => new Option(s.name, s.id));
@@ -801,7 +893,8 @@
     const templatePath = LAYOUT.template || (site && site.template);
     const [template, logo] = await Promise.all([
       templatePath ? loadImage(templatePath).catch(() => null) : null,
-      site && site.logo ? loadImage(site.logo).catch(() => null) : null,
+      // Fond sombre : version claire du logo quand elle existe
+      site && site.logo ? loadImage((LAYOUT.dark && site.logoOnDark) || site.logo).catch(() => null) : null,
     ]);
     if (token !== siteToken) return;
     state.site = site ? { ...site, img: logo ? (trimTransparent(logo, 1200) || logo) : null } : null;
@@ -877,6 +970,8 @@
     if (c && state.harden) c = hardenAlpha(c);
     // Rognage exprimé en pixels de l'image finale, converti en pixels de la photo
     if (c && p.trim > 0) c = erodeAlpha(c, p.trim / baseScale(c, i));
+    // Lumière harmonisée : chaque joueur est ramené à la même luminosité moyenne
+    if (c && state.light.on && p.luma) c = adjustLight(c, p.luma, LIGHT_TARGETS[state.light.level - 1]);
     p.cutout = c;
     if (p.cutout) cards[i].after.src = p.cutout.toDataURL('image/png');
   }
@@ -908,6 +1003,7 @@
       const trimmed = trimTransparent(await loadBlobImage(blob), CUTOUT_MAX);
       if (!trimmed) throw new Error(t('player.nothingFound'));
       p.rawCutout = trimmed;
+      p.luma = meanLuma(trimmed);
       applyCutout(i);
       if (!p.placed) {
         p.scale = 1;
@@ -969,6 +1065,30 @@
   function setTitle(changes) {
     Object.assign(state.title, changes);
     saveTitle();
+    refreshUI();
+    draw();
+  }
+
+  function setNames(changes) {
+    Object.assign(state.names, changes);
+    prefs.set(`${LAYOUT_ID}:names`, state.names);
+    refreshUI();
+    draw();
+  }
+
+  function saveNamePos(i) {
+    const p = state.players[i];
+    prefs.set(`${LAYOUT_ID}:namePos:${i}`, { x: Math.round(p.nameX), y: Math.round(p.nameY) });
+  }
+
+  function recenterNames() {
+    state.players.forEach((p, i) => {
+      if (!nameZone(i)) return;
+      p.nameX = nameZone(i).x;
+      p.nameY = nameZone(i).y;
+      prefs.set(`${LAYOUT_ID}:namePos:${i}`, null);
+    });
+    state.nameSelected = -1;
     refreshUI();
     draw();
   }
@@ -1067,6 +1187,7 @@
       const pt = toLogical(e);
       if (titleBox && inRect(pt, titleBox)) {
         state.titleSelected = true;
+        state.nameSelected = -1;
         state.selected = -1;
         drag = { title: true, dx: pt.x - state.title.x, dy: pt.y - state.title.y };
         cv.setPointerCapture(e.pointerId);
@@ -1076,6 +1197,19 @@
         return;
       }
       state.titleSelected = false;
+      const ni = hitName(pt);
+      if (ni >= 0) {
+        const p = state.players[ni];
+        state.nameSelected = ni;
+        state.selected = -1;
+        drag = { name: ni, dx: pt.x - p.nameX, dy: pt.y - p.nameY };
+        cv.setPointerCapture(e.pointerId);
+        cv.classList.add('is-dragging');
+        refreshUI();
+        draw();
+        return;
+      }
+      state.nameSelected = -1;
       const i = hitPlayer(pt);
       if (i >= 0) {
         const p = state.players[i];
@@ -1106,6 +1240,23 @@
         draw();
         return;
       }
+      if (drag && drag.name !== undefined) {
+        // Nom : magnétisme sur le centre de sa case et sur sa hauteur d'origine
+        const p = state.players[drag.name];
+        const zone = nameZone(drag.name);
+        let x = clamp(pt.x - drag.dx, 0, W);
+        let y = clamp(pt.y - drag.dy, 0, H);
+        state.guides = [];
+        if (!e.altKey && Math.abs(x - zone.x) < SNAP) {
+          x = zone.x;
+          state.guides = [{ x }];
+        }
+        if (!e.altKey && Math.abs(y - zone.y) < SNAP) y = zone.y;
+        p.nameX = x;
+        p.nameY = y;
+        draw();
+        return;
+      }
       if (drag) {
         const p = state.players[drag.i];
         let x = clamp(pt.x - drag.dx, 0, W);
@@ -1118,17 +1269,20 @@
         return;
       }
       const overTitle = !!titleBox && inRect(pt, titleBox);
-      const over = overTitle ? -1 : hitPlayer(pt);
-      cv.style.cursor = overTitle || over >= 0 ? 'grab' : hitSlot(pt) >= 0 ? 'pointer' : 'default';
-      if (over !== state.hover || overTitle !== state.titleHover) {
+      const overName = overTitle ? -1 : hitName(pt);
+      const over = overTitle || overName >= 0 ? -1 : hitPlayer(pt);
+      cv.style.cursor = overTitle || overName >= 0 || over >= 0 ? 'grab' : hitSlot(pt) >= 0 ? 'pointer' : 'default';
+      if (over !== state.hover || overTitle !== state.titleHover || overName !== state.nameHover) {
         state.hover = over;
         state.titleHover = overTitle;
+        state.nameHover = overName;
         draw();
       }
     });
     const endDrag = () => {
       if (!drag) return;
       if (drag.title) saveTitle();
+      if (drag.name !== undefined) saveNamePos(drag.name);
       drag = null;
       state.guides = [];
       cv.classList.remove('is-dragging');
@@ -1138,9 +1292,10 @@
     cv.addEventListener('pointerup', endDrag);
     cv.addEventListener('pointercancel', endDrag);
     cv.addEventListener('pointerleave', () => {
-      if (!drag && (state.hover !== -1 || state.titleHover)) {
+      if (!drag && (state.hover !== -1 || state.titleHover || state.nameHover !== -1)) {
         state.hover = -1;
         state.titleHover = false;
+        state.nameHover = -1;
         draw();
       }
     });
@@ -1158,11 +1313,13 @@
     document.addEventListener('keydown', (e) => {
       const p = state.players[state.selected];
       const titleActive = state.titleSelected && !!titleBox;
-      if (els.dialog.open || (!titleActive && (!p || !p.cutout))) return;
+      const nameActive = state.nameSelected >= 0 && !!nameBoxes[state.nameSelected];
+      if (els.dialog.open || (!titleActive && !nameActive && (!p || !p.cutout))) return;
       if (e.target.closest('input, select, textarea')) return;
       if (e.key === 'Escape') {
         state.selected = -1;
         state.titleSelected = false;
+        state.nameSelected = -1;
         refreshUI();
         draw();
         return;
@@ -1175,6 +1332,11 @@
         state.title.x = clamp(state.title.x + d[0], 0, W);
         state.title.y = clamp(state.title.y + d[1], 0, H);
         saveTitle();
+      } else if (nameActive) {
+        const np = state.players[state.nameSelected];
+        np.nameX = clamp(np.nameX + d[0], 0, W);
+        np.nameY = clamp(np.nameY + d[1], 0, H);
+        saveNamePos(state.nameSelected);
       } else {
         p.x = clamp(p.x + d[0], 0, W);
         p.y = clamp(p.y + d[1], 0, H * 1.5);
@@ -1216,6 +1378,15 @@
 
     els.engineSelect.value = prefs.get('player:engine', 'isnet');
     els.engineSelect.addEventListener('change', () => prefs.set('player:engine', els.engineSelect.value));
+    const setLight = (changes) => {
+      Object.assign(state.light, changes);
+      prefs.set('player:light', state.light);
+      state.players.forEach((_, i) => applyCutout(i));
+      refreshUI();
+      draw();
+    };
+    els.lightToggle.addEventListener('change', () => setLight({ on: els.lightToggle.checked }));
+    els.lightLevel.addEventListener('input', () => setLight({ level: Number(els.lightLevel.value) }));
     els.hardenToggle.addEventListener('change', () => {
       state.harden = els.hardenToggle.checked;
       prefs.set('player:harden', state.harden);
@@ -1248,6 +1419,19 @@
         if (document.fonts) document.fonts.load(titleFont(state.title.size)).then(draw);
       });
       els.titleCenterBtn.addEventListener('click', () => setTitle({ x: TITLE.x, y: TITLE.y }));
+    }
+    if (state.names) {
+      els.namesSize.addEventListener('input', () => setNames({ size: Number(els.namesSize.value) }));
+      els.namesColor.addEventListener('input', () => setNames({ color: els.namesColor.value }));
+      els.namesSwatches.addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-color]');
+        if (b) setNames({ color: b.dataset.color });
+      });
+      els.namesFont.addEventListener('change', () => {
+        setNames({ font: els.namesFont.value });
+        if (document.fonts) document.fonts.load(fontOf(state.names.font)(state.names.size)).then(draw);
+      });
+      els.namesCenterBtn.addEventListener('click', recenterNames);
     }
     els.shadowToggle.addEventListener('change', () => {
       state.shadow = els.shadowToggle.checked;
@@ -1294,6 +1478,7 @@
   if (document.fonts) {
     document.fonts.ready.then(draw);
     if (state.title && state.title.font === 'anton') document.fonts.load(titleFont(state.title.size)).then(draw);
+    if (state.names && state.names.font === 'anton') document.fonts.load(fontOf('anton')(state.names.size)).then(draw);
   }
 
   // Exposé pour le débogage dans la console.

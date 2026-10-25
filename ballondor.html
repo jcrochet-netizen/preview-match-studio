@@ -89,7 +89,33 @@
       </section>
 
       <section class="card">
-        <h2><span class="step">4</span><span data-i18n="player.settingsTitle">Réglages du détourage</span></h2>
+        <h2><span class="step">4</span><span data-i18n="names.title">Noms des joueurs</span></h2>
+        <label class="inline-field"><span data-i18n="title.font">Police</span>
+          <select class="select" id="namesFont">
+            <option value="inter">Inter</option>
+            <option value="anton">Anton</option>
+          </select>
+        </label>
+        <div class="inline-field">
+          <span data-i18n="title.color">Couleur</span>
+          <span class="color-pick" id="namesSwatches">
+            <button type="button" class="swatch" data-color="#ffffff" style="background:#ffffff" title="Blanc" data-i18n-attr="title:title.white;aria-label:title.white"></button>
+            <button type="button" class="swatch" data-color="#f5c542" style="background:#f5c542" title="Or" data-i18n-attr="title:title.gold;aria-label:title.gold"></button>
+            <input type="color" id="namesColor" value="#ffffff" aria-label="Couleur" data-i18n-attr="aria-label:title.color">
+          </span>
+        </div>
+        <label class="range"><span data-i18n="title.size">Taille</span>
+          <input type="range" id="namesSize" min="14" max="60" step="1">
+          <output id="namesSizeOut"></output>
+        </label>
+        <div class="row-btns">
+          <button class="btn small ghost" id="namesCenterBtn" type="button" data-i18n="names.recenter">Recentrer les noms</button>
+        </div>
+        <small class="note" data-i18n="names.note">Saisissez les noms dans les cartes des joueurs. Glissez un nom sur l'image pour le déplacer ; il est réduit s'il dépasse la largeur de la case.</small>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">5</span><span data-i18n="player.settingsTitle">Réglages du détourage</span></h2>
         <label class="field"><span data-i18n="player.engine">Moteur de détourage</span>
           <select class="select" id="engineSelect">
             <option value="isnet" data-i18n="player.engineBest">Haute qualité — pleine précision (≈ 170 Mo, recommandé)</option>
@@ -100,11 +126,17 @@
         <label class="check"><input type="checkbox" id="hardenToggle" checked> <span data-i18n="player.harden">Rendre le joueur bien opaque (corrige les zones semi-transparentes)</span></label>
         <label class="check"><input type="checkbox" id="clipToggle" checked> <span data-i18n="ballondor.clip">Garder chaque joueur dans sa case</span></label>
         <label class="check"><input type="checkbox" id="shadowToggle" checked> <span data-i18n="player.shadow">Ombre portée sous le joueur</span></label>
+        <label class="check"><input type="checkbox" id="lightToggle"> <span data-i18n="player.light">Harmoniser la lumière des joueurs</span></label>
+        <label class="range light-range"><span data-i18n="player.lightLevel">Lumière</span>
+          <input type="range" id="lightLevel" min="1" max="5" step="1" value="3" list="lightTicks">
+          <output id="lightLevelOut"></output>
+        </label>
+        <datalist id="lightTicks"><option value="1"></option><option value="2"></option><option value="3"></option><option value="4"></option><option value="5"></option></datalist>
         <small class="note" data-i18n="player.engineIntro">L'IA tourne dans votre navigateur : la photo n'est envoyée à aucun serveur. Le modèle se télécharge au premier usage, puis reste en cache.</small>
       </section>
 
       <section class="card">
-        <h2><span class="step">5</span><span data-i18n="export.title">Aperçu &amp; téléchargement</span></h2>
+        <h2><span class="step">6</span><span data-i18n="export.title">Aperçu &amp; téléchargement</span></h2>
         <button class="btn primary block" id="previewBtn" type="button" data-i18n="export.preview">Prévisualiser</button>
       </section>
     </aside>

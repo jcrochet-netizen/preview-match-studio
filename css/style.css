@@ -439,6 +439,7 @@ output { text-align: right; font-size: 12.5px; color: var(--text); font-variant-
 .seg-block { display: flex; width: 100%; }
 .player-anchors { margin-top: 12px; }
 .recenter-btn { margin-top: 12px; }
+.light-range { grid-template-columns: auto 1fr 104px; }
 .name-field { margin-top: 10px; }
 .color-pick { display: inline-flex; align-items: center; gap: 8px; }
 .swatch {
