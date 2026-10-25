@@ -60,7 +60,17 @@
       </section>
 
       <section class="card">
-        <h2><span class="step">3</span><span data-i18n="player.settingsTitle">Réglages du détourage</span></h2>
+        <h2><span class="step">3</span><span data-i18n="look.title">Lumière</span></h2>
+        <div class="look-grid" id="lookGrid" role="group" aria-label="Lumière" data-i18n-attr="aria-label:look.title"></div>
+        <label class="range"><span data-i18n="look.strength">Intensité</span>
+          <input type="range" id="lookStrength" min="0" max="100" step="5" value="100">
+          <output id="lookStrengthOut"></output>
+        </label>
+        <small class="note" data-i18n="look.note">Chaque ambiance (sauf Originale) donne aussi la même luminosité à tous les joueurs.</small>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">4</span><span data-i18n="player.settingsTitle">Réglages du détourage</span></h2>
         <label class="field"><span data-i18n="player.engine">Moteur de détourage</span>
           <select class="select" id="engineSelect">
             <option value="isnet" data-i18n="player.engineBest">Haute qualité — pleine précision (≈ 170 Mo, recommandé)</option>
@@ -70,17 +80,11 @@
         </label>
         <label class="check"><input type="checkbox" id="hardenToggle" checked> <span data-i18n="player.harden">Rendre le joueur bien opaque (corrige les zones semi-transparentes)</span></label>
         <label class="check"><input type="checkbox" id="shadowToggle" checked> <span data-i18n="player.shadow">Ombre portée sous le joueur</span></label>
-        <label class="check"><input type="checkbox" id="lightToggle"> <span data-i18n="player.light">Harmoniser la lumière des joueurs</span></label>
-        <label class="range light-range"><span data-i18n="player.lightLevel">Lumière</span>
-          <input type="range" id="lightLevel" min="1" max="5" step="1" value="3" list="lightTicks">
-          <output id="lightLevelOut"></output>
-        </label>
-        <datalist id="lightTicks"><option value="1"></option><option value="2"></option><option value="3"></option><option value="4"></option><option value="5"></option></datalist>
         <small class="note" data-i18n="player.engineIntro">L'IA tourne dans votre navigateur : la photo n'est envoyée à aucun serveur. Le modèle se télécharge au premier usage, puis reste en cache.</small>
       </section>
 
       <section class="card">
-        <h2><span class="step">4</span><span data-i18n="export.title">Aperçu &amp; téléchargement</span></h2>
+        <h2><span class="step">5</span><span data-i18n="export.title">Aperçu &amp; téléchargement</span></h2>
         <button class="btn primary block" id="previewBtn" type="button" data-i18n="export.preview">Prévisualiser</button>
       </section>
     </aside>

@@ -45,8 +45,12 @@ sont détourées l'une après l'autre. Le sélecteur « 1 joueur / 2 joueurs » 
 - L'option « Rendre le joueur bien opaque » comble les zones que le modèle laisse semi-transparentes
   (ex. maillot jaune sur parquet jaune).
 - Préférez des photos où le joueur n'est coupé qu'en bas du cadre : une coupe sur le côté reste visible.
-- « Harmoniser la lumière des joueurs » (5 crans, de Très sombre à Très lumineuse) rapproche la
-  luminosité des joueurs d'un même niveau, pour des photos venant de sources différentes.
+- Carte « Lumière » : une ambiance appliquée aux joueurs détourés, dosée par « Intensité ».
+  Originale (photo telle quelle), Naturelle, Plus claire, Plus sombre, Studio photo (net, liseré blanc),
+  Cinématique (contrastée, tons du décor, bas du joueur assombri) et Lumière du décor (halo de la couleur
+  du fond). La couleur du décor est lue dans le template : dorée sur le Ballon d'Or, neutre sur `base.png`.
+  Toutes sauf Originale donnent aussi la même luminosité aux joueurs (photos de sources différentes).
+  Les réglages de chaque ambiance sont dans `js/config.js` (`lightLooks`).
 
 ## Ballon d'Or (`ballondor.html`)
 

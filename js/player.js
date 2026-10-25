@@ -16,8 +16,8 @@
   const OPTIONAL_LOGO = LAYOUT.siteLogo === 'optional';
   const TITLE = LAYOUT.title || null; // titre facultatif (page Ballon d'Or)
   const NAME_SIZE = 28; // taille des noms sous les cases (réduite si le nom est plus large que la case)
-  // Harmonisation de la lumière : luminosité moyenne visée pour chaque cran (1 = très sombre … 5 = très lumineuse)
-  const LIGHT_TARGETS = [0.28, 0.35, 0.42, 0.5, 0.58];
+  // Ambiances de lumière proposées (réglages dans js/config.js)
+  const LOOKS = CFG.lightLooks;
   // Moteur de détourage : IMG.LY Background Removal (licence AGPL), exécuté dans le navigateur.
   // Le modèle est téléchargé depuis le CDN d'IMG.LY au premier usage, puis gardé en cache.
   const ENGINE_URL = 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm';
@@ -141,7 +141,15 @@
     x.drawImage(src, 0, 0);
     const img = x.getImageData(0, 0, w, h);
     const p = img.data;
-    // Distance de chaque pixel au fond le plus proche (transformée de distance en deux passes)
+    const d = edgeDistance(p, w, h);
+    for (let i = 0; i < d.length; i++) p[i * 4 + 3] = Math.round(p[i * 4 + 3] * clamp((d[i] - radius + 0.5) / 1.5, 0, 1));
+    x.putImageData(img, 0, 0);
+    return c;
+  }
+
+  // Distance (px) de chaque pixel au fond le plus proche, d'après la transparence (transformée de distance
+  // en deux passes). Les bords de l'image ne comptent pas comme du fond.
+  function edgeDistance(p, w, h) {
     const d = new Float32Array(w * h);
     for (let i = 0; i < d.length; i++) d[i] = p[i * 4 + 3] < 128 ? 0 : 1e9;
     const D = Math.SQRT2;
@@ -173,10 +181,14 @@
         d[i] = v;
       }
     }
-    for (let i = 0; i < d.length; i++) p[i * 4 + 3] = Math.round(p[i * 4 + 3] * clamp((d[i] - radius + 0.5) / 1.5, 0, 1));
-    x.putImageData(img, 0, 0);
-    return c;
+    return d;
   }
+
+  const edgeDistanceOf = (src) => {
+    const x = Object.assign(document.createElement('canvas'), { width: src.width, height: src.height }).getContext('2d');
+    x.drawImage(src, 0, 0);
+    return edgeDistance(x.getImageData(0, 0, src.width, src.height).data, src.width, src.height);
+  };
 
   // Luminosité moyenne (0 à 1) des pixels bien opaques du joueur, mesurée sur une version réduite
   function meanLuma(src) {
@@ -198,24 +210,102 @@
     return count ? sum / count / 255 : null;
   }
 
-  // Amène la luminosité moyenne du joueur de « from » à « to » par une courbe gamma : les noirs et
-  // les blancs restent en place, seuls les tons moyens bougent (rendu naturel, couleurs conservées)
-  function adjustLight(src, from, to) {
-    const g = clamp(Math.log(to) / Math.log(from), 0.4, 2.5);
-    if (Math.abs(g - 1) < 0.01) return src;
-    const lut = new Uint8ClampedArray(256);
-    for (let v = 0; v < 256; v++) lut[v] = Math.round(255 * (v / 255) ** g);
+  const smooth = (t) => { const u = clamp(t, 0, 1); return u * u * (3 - 2 * u); };
+  const hexToRgb = (hex) => [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16) / 255);
+
+  // Couleur de la lumière du décor : moyenne des pixels lumineux du template, normalisée (canal max = 1).
+  // Sur le fond Ballon d'Or, c'est un or chaud ; sur un fond neutre, presque du blanc.
+  function ambientColor(img) {
+    if (!img) return [1, 1, 1];
+    const { w, h } = imgSize(img);
+    const k = 160 / Math.max(w, h);
+    const x = Object.assign(document.createElement('canvas'), { width: Math.round(w * k), height: Math.round(h * k) })
+      .getContext('2d', { willReadFrequently: true });
+    x.drawImage(img, 0, 0, x.canvas.width, x.canvas.height);
+    const d = x.getImageData(0, 0, x.canvas.width, x.canvas.height).data;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const L = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255;
+      if (L < 0.45) continue;
+      r += d[i] * L;
+      g += d[i + 1] * L;
+      b += d[i + 2] * L;
+    }
+    const m = Math.max(r, g, b);
+    return m ? [r / m, g / m, b / m] : [1, 1, 1];
+  }
+
+  // Ambiance de lumière (CFG.lightLooks) appliquée au joueur détouré, dosée par « s » (0 à 1) :
+  // exposition ramenée à la luminosité visée (harmonise les joueurs entre eux), contraste en S, couleurs,
+  // teinte du décor dans les hautes lumières, liseré de lumière sur le contour (plus marqué en haut,
+  // comme un projecteur), bas du joueur assombri pour l'ancrer au sol.
+  //   luma : luminosité moyenne du joueur ; ambient : couleur de la lumière du décor [r, g, b]
+  //   edge : distances au fond (edgeDistance) quand l'ambiance a un liseré ; rimPx : largeur du liseré
+  function applyLook(src, look, { s, luma, ambient, edge, rimPx }) {
+    const w = src.width;
+    const h = src.height;
     const c = document.createElement('canvas');
-    c.width = src.width;
-    c.height = src.height;
+    c.width = w;
+    c.height = h;
     const x = c.getContext('2d');
     x.drawImage(src, 0, 0);
-    const img = x.getImageData(0, 0, c.width, c.height);
+    const img = x.getImageData(0, 0, w, h);
     const p = img.data;
-    for (let i = 0; i < p.length; i += 4) {
-      p[i] = lut[p[i]];
-      p[i + 1] = lut[p[i + 1]];
-      p[i + 2] = lut[p[i + 2]];
+    const mix = (a, b) => a + (b - a) * s;
+    // Courbe des tons : gamma d'exposition puis contraste en S (le noir et le blanc restent en place).
+    // Harmonisation : un joueur sombre est bien éclairci, un joueur clair à peine assombri (sinon un
+    // maillot blanc ferait noircir le visage) ; puis l'exposition propre à l'ambiance.
+    const harmonize = look.luma && luma ? clamp(Math.log(look.luma) / Math.log(luma), 0.55, 1.3) : 1;
+    const gamma = mix(1, harmonize * 2 ** -(look.exposure || 0));
+    const k = mix(1, look.contrast || 1);
+    const lut = new Float32Array(256);
+    for (let v = 0; v < 256; v++) {
+      const t = (v / 255) ** gamma;
+      lut[v] = t < 0.5 ? 0.5 * (2 * t) ** k : 1 - 0.5 * (2 * (1 - t)) ** k;
+    }
+    const sat = mix(1, look.saturation || 1);
+    const warm = (look.warmth || 0) * s;
+    const grade = (look.grade || 0) * s;
+    const [ar, ag, ab] = ambient;
+    const aL = 0.299 * ar + 0.587 * ag + 0.114 * ab || 1;
+    const rim = look.rim && edge ? look.rim : null;
+    // Liseré couleur du décor adouci vers le blanc : une lumière chaude plutôt qu'un aplat orangé
+    const rc = rim ? (rim.color === 'ambient' ? ambient.map((v) => v + (1 - v) * 0.35) : hexToRgb(rim.color)) : null;
+    const rimK = rim ? rim.strength * s : 0;
+    const ground = (look.ground || 0) * s;
+    for (let y = 0; y < h; y++) {
+      const fy = y / h;
+      const top = 1 - 0.55 * fy;
+      const low = 1 - ground * smooth((fy - 0.7) / 0.3);
+      for (let col = 0; col < w; col++) {
+        const j = y * w + col;
+        const i = j * 4;
+        if (!p[i + 3]) continue;
+        let r = lut[p[i]];
+        let g = lut[p[i + 1]];
+        let b = lut[p[i + 2]];
+        const L = 0.299 * r + 0.587 * g + 0.114 * b;
+        r = (L + (r - L) * sat) * (1 + warm);
+        g = L + (g - L) * sat;
+        b = (L + (b - L) * sat) * (1 - warm);
+        if (grade) {
+          const t = grade * L * L;
+          r += ((L * ar) / aL - r) * t;
+          g += ((L * ag) / aL - g) * t;
+          b += ((L * ab) / aL - b) * t;
+        }
+        if (rimK) {
+          const e = rimK * top * Math.exp(-edge[j] / rimPx);
+          r = 1 - (1 - r) * (1 - rc[0] * e);
+          g = 1 - (1 - g) * (1 - rc[1] * e);
+          b = 1 - (1 - b) * (1 - rc[2] * e);
+        }
+        p[i] = r * low * 255;
+        p[i + 1] = g * low * 255;
+        p[i + 2] = b * low * 255;
+      }
     }
     x.putImageData(img, 0, 0);
     return c;
@@ -291,6 +381,8 @@
     flip: false,
     name: '', // nom affiché sous la case (cases fixes)
     luma: null, // luminosité moyenne mesurée sur le joueur détouré
+    edge: null, // distances au fond (liseré de lumière), en cache
+    edgeKey: null,
     nameX: nameStart(i).x,
     nameY: nameStart(i).y,
     trim: prefs.get('player:trim', 2), // pixels rognés sur le contour (image finale, joueur à 100 %)
@@ -309,7 +401,8 @@
     hover: -1,
     shadow: prefs.get('player:shadow', true),
     harden: prefs.get('player:harden', true),
-    light: prefs.get('player:light', { on: false, level: 3 }), // harmonisation de la lumière des joueurs
+    look: { id: 'none', strength: 100, ...prefs.get('player:look', {}) }, // ambiance de lumière et intensité (%)
+    ambient: [1, 1, 1], // couleur de la lumière du décor (template)
     clip: prefs.get(`${LAYOUT_ID}:clip`, true), // cases fixes : joueur découpé au contour de sa case
     // Titre : texte, taille, couleur, police et position (centre du texte), mémorisés
     title: TITLE ? {
@@ -345,9 +438,9 @@
     engineSelect: $('#engineSelect'),
     hardenToggle: $('#hardenToggle'),
     shadowToggle: $('#shadowToggle'),
-    lightToggle: $('#lightToggle'),
-    lightLevel: $('#lightLevel'),
-    lightLevelOut: $('#lightLevelOut'),
+    lookGrid: $('#lookGrid'),
+    lookStrength: $('#lookStrength'),
+    lookStrengthOut: $('#lookStrengthOut'),
     clipToggle: $('#clipToggle'),
     titleText: $('#titleText'),
     titleSize: $('#titleSize'),
@@ -777,6 +870,22 @@
   }
 
   // ---------- Interface ----------
+  // Sélecteur d'ambiance de lumière : un bouton par ambiance (nom + effet en une ligne)
+  function buildLookPicker() {
+    els.lookGrid.replaceChildren(...LOOKS.map((l) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'look-tile';
+      b.dataset.look = l.id;
+      const name = document.createElement('strong');
+      name.dataset.i18n = `look.${l.id}`;
+      const hint = document.createElement('small');
+      hint.dataset.i18n = `look.${l.id}Hint`;
+      b.append(name, hint);
+      return b;
+    }));
+  }
+
   // Sélecteur de police : un bouton par police, écrit dans cette police
   function buildFontPicker(root, onPick) {
     root.replaceChildren(...CFG.fonts.map((f) => {
@@ -855,10 +964,10 @@
     els.engineSelect.disabled = anyBusy;
     els.hardenToggle.checked = state.harden;
     els.hardenToggle.disabled = anyBusy;
-    els.lightToggle.checked = state.light.on;
-    els.lightLevel.value = state.light.level;
-    els.lightLevel.disabled = !state.light.on;
-    els.lightLevelOut.textContent = t(`player.light${state.light.level}`);
+    els.lookGrid.querySelectorAll('.look-tile').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.look === state.look.id)));
+    els.lookStrength.value = state.look.strength;
+    els.lookStrength.disabled = state.look.id === 'none';
+    els.lookStrengthOut.textContent = `${state.look.strength} %`;
     els.shadowToggle.checked = state.shadow;
     if (els.clipToggle) els.clipToggle.checked = state.clip;
     if (state.title) {
@@ -927,6 +1036,11 @@
     if (token !== siteToken) return;
     state.site = site ? { ...site, img: logo ? (trimTransparent(logo, 1200) || logo) : null } : null;
     state.template = template;
+    const ambient = ambientColor(template);
+    if (String(ambient) !== String(state.ambient)) {
+      state.ambient = ambient;
+      state.players.forEach((_, i) => applyCutout(i));
+    }
     els.siteSelect.value = site ? site.id : '';
     prefs.set(`${LAYOUT_ID}:site`, site ? site.id : '');
     refreshUI();
@@ -998,8 +1112,27 @@
     if (c && state.harden) c = hardenAlpha(c);
     // Rognage exprimé en pixels de l'image finale, converti en pixels de la photo
     if (c && p.trim > 0) c = erodeAlpha(c, p.trim / baseScale(c, i));
-    // Lumière harmonisée : chaque joueur est ramené à la même luminosité moyenne
-    if (c && state.light.on && p.luma) c = adjustLight(c, p.luma, LIGHT_TARGETS[state.light.level - 1]);
+    // Ambiance de lumière, dosée par « Intensité »
+    const look = LOOKS.find((l) => l.id === state.look.id);
+    if (c && look && look.id !== 'none' && state.look.strength > 0) {
+      let edge = null;
+      if (look.rim) {
+        // Distances au fond gardées en cache tant que le contour du joueur ne change pas
+        const key = `${state.harden}:${p.trim}`;
+        if (p.edgeKey !== key) {
+          p.edge = edgeDistanceOf(c);
+          p.edgeKey = key;
+        }
+        edge = p.edge;
+      }
+      c = applyLook(c, look, {
+        s: state.look.strength / 100,
+        luma: p.luma,
+        ambient: state.ambient,
+        edge,
+        rimPx: look.rim ? look.rim.width / baseScale(c, i) : 1,
+      });
+    }
     p.cutout = c;
     if (p.cutout) cards[i].after.src = p.cutout.toDataURL('image/png');
   }
@@ -1032,6 +1165,7 @@
       if (!trimmed) throw new Error(t('player.nothingFound'));
       p.rawCutout = trimmed;
       p.luma = meanLuma(trimmed);
+      p.edgeKey = null;
       applyCutout(i);
       if (!p.placed) {
         p.scale = 1;
@@ -1406,15 +1540,23 @@
 
     els.engineSelect.value = prefs.get('player:engine', 'isnet');
     els.engineSelect.addEventListener('change', () => prefs.set('player:engine', els.engineSelect.value));
-    const setLight = (changes) => {
-      Object.assign(state.light, changes);
-      prefs.set('player:light', state.light);
-      state.players.forEach((_, i) => applyCutout(i));
+    // Ambiance de lumière : recalcul des joueurs regroupé pendant qu'on fait glisser l'intensité
+    let lookTimer = 0;
+    const setLook = (changes) => {
+      Object.assign(state.look, changes);
+      prefs.set('player:look', state.look);
       refreshUI();
-      draw();
+      clearTimeout(lookTimer);
+      lookTimer = setTimeout(() => {
+        state.players.forEach((_, i) => applyCutout(i));
+        draw();
+      }, 60);
     };
-    els.lightToggle.addEventListener('change', () => setLight({ on: els.lightToggle.checked }));
-    els.lightLevel.addEventListener('input', () => setLight({ level: Number(els.lightLevel.value) }));
+    els.lookGrid.addEventListener('click', (e) => {
+      const b = e.target.closest('.look-tile');
+      if (b) setLook({ id: b.dataset.look });
+    });
+    els.lookStrength.addEventListener('input', () => setLook({ strength: Number(els.lookStrength.value) }));
     els.hardenToggle.addEventListener('change', () => {
       state.harden = els.hardenToggle.checked;
       prefs.set('player:harden', state.harden);
@@ -1499,6 +1641,7 @@
 
   // ---------- Démarrage ----------
   buildCards();
+  buildLookPicker();
   document.documentElement.lang = lang;
   applyStaticTexts();
   bindEvents();

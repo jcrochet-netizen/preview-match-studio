@@ -129,6 +129,26 @@ window.APP_CONFIG = {
     logo: { x: 1056, y: 24, w: 120, h: 40 },
   },
 
+  // Ambiances de lumière des pages joueur, appliquées à chaque joueur détouré (dosées par « Intensité ») :
+  //   luma       : luminosité moyenne visée, la même pour tous les joueurs (absente = photo inchangée) ;
+  //                un joueur sombre est bien éclairci, un joueur clair (maillot blanc) peu assombri
+  //   exposure   : plus clair (+) ou plus sombre (−), par une courbe gamma qui garde le noir et le blanc
+  //   contrast   : contraste en S (1 = inchangé) ; saturation : intensité des couleurs (1 = inchangée)
+  //   warmth     : température (+ plus chaud, − plus froid)
+  //   grade      : teinte les hautes lumières avec la couleur de la lumière du décor (template)
+  //   rim        : liseré de lumière sur le contour : force, largeur (px de l'image finale),
+  //                couleur ('ambient' = couleur de la lumière du décor)
+  //   ground     : assombrit le bas du joueur pour l'ancrer dans le décor
+  lightLooks: [
+    { id: 'none' },
+    { id: 'natural', luma: 0.42 },
+    { id: 'bright', luma: 0.42, exposure: 0.45, contrast: 1.05, saturation: 1.06 },
+    { id: 'dark', luma: 0.42, exposure: -0.5, contrast: 1.18, saturation: 0.92 },
+    { id: 'studio', luma: 0.44, exposure: 0.1, contrast: 1.14, saturation: 1.03, warmth: -0.02, rim: { strength: 0.35, width: 5, color: '#ffffff' } },
+    { id: 'cinematic', luma: 0.42, exposure: -0.25, contrast: 1.3, saturation: 0.9, grade: 0.22, rim: { strength: 0.5, width: 7, color: 'ambient' }, ground: 0.35 },
+    { id: 'decor', luma: 0.42, contrast: 1.1, saturation: 0.95, warmth: 0.04, grade: 0.3, rim: { strength: 0.7, width: 9, color: 'ambient' } },
+  ],
+
   // Polices du titre et des noms (pages Ballon d'Or), chargées depuis Google Fonts dans ces pages.
   //   id : valeur enregistrée ; family / weight : police dessinée sur l'image ; fallback : police de secours
   fonts: [
