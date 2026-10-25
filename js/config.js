@@ -31,6 +31,7 @@ window.APP_CONFIG = {
   //   template : image de fond (16:9) dans assets/templates/
   //   logo     : PNG ou SVG à fond transparent dans assets/sites/
   //              (si le fichier manque, le nom du site est affiché à la place)
+  //   logoOnDark : variante claire du logo, utilisée sur les fonds sombres (optionnel)
   //   height   : hauteur du logo en px sur l'image finale (optionnel)
   //   teamLogo : positions/taille des logos d'équipes propres à ce template (optionnel)
   sites: [
@@ -49,6 +50,18 @@ window.APP_CONFIG = {
       logo: 'assets/sites/lakersbrasil.jpg',
       height: 84, // logo carré : plus haut pour rester lisible
     },
+    // Sites football (logos tirés des kits de marque NSN)
+    { id: 'topmercato', name: 'Topmercato', sports: ['football'], logo: 'assets/sites/topmercato.png' },
+    { id: 'afrik-foot', name: 'Afrik-Foot', sports: ['football'], logo: 'assets/sites/afrik-foot.png', height: 72 },
+    {
+      id: 'sportsmole', name: 'Sportsmole', sports: ['football'],
+      logo: 'assets/sites/sportsmole.png', logoOnDark: 'assets/sites/sportsmole-white.png',
+    },
+    { id: 'footballwhispers', name: 'FootballWhispers', sports: ['football'], logo: 'assets/sites/football-whispers.png', height: 72 },
+    {
+      id: 'trivela', name: 'Trivela', sports: ['football'],
+      logo: 'assets/sites/trivela.png', logoOnDark: 'assets/sites/trivela-white.png',
+    },
   ],
 
   // Pages « photo joueur » : une mise en page par page (attribut data-layout de <body>).
@@ -59,7 +72,9 @@ window.APP_CONFIG = {
   //                side = libellé de position, clip = contour de la case [[x, y], …]
   //                name = zone du nom sous la case { x: centre, y: milieu, w: largeur maximale }
   //   title      : titre facultatif (centre du texte, taille et couleur par défaut, largeur maximale)
-  //   siteLogo   : 'optional' → menu des sites (tous sports) avec « Aucun logo »
+  //   siteLogo   : 'optional' → menu des sites avec « Aucun logo »
+  //   sport      : sport des sites proposés (par défaut 'nba')
+  //   dark       : fond sombre → logos en version claire (logoOnDark) quand elle existe
   //   filePrefix : début du nom de fichier exporté
   playerLayouts: {
     player: { template: 'assets/templates/base.png', players: 1 },
@@ -68,6 +83,8 @@ window.APP_CONFIG = {
     ballondor: {
       template: 'assets/templates/ballondor-top3.png',
       siteLogo: 'optional',
+      sport: 'football',
+      dark: true,
       filePrefix: 'ballon-dor',
       // Titre en haut, entre le trophée et les projecteurs
       title: { x: 600, y: 92, size: 56, color: '#ffffff', maxW: 720 },

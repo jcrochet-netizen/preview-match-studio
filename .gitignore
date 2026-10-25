@@ -1,6 +1,9 @@
 .DS_Store
 .claude/
 
+# Photos d'agence (Icon Sport) : sous licence, à ne pas publier sur le dépôt public
+ballondor/
+
 # assets/templates : seuls les templates utilisés par l'outil sont versionnés.
 # Pour un nouveau template, ajoutez une ligne « !assets/templates/<fichier> » ci-dessous.
 assets/templates/*
