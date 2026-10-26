@@ -210,3 +210,13 @@ window.APP_CONFIG = {
   // (à 100 %), centré sur les positions [x, y] ci-dessous (gauche, droite).
   teamLogo: { box: 340, positions: [[300, 338], [900, 338]] },
 };
+
+// Déclinaison « Top 10 - ParisUnited » (ballondor-top10-parisunited.html) : même visuel que ballondorTop10,
+// mais sans rang automatique : une case par ligne où l'on saisit jusqu'à 2 chiffres (numberBox : centre x,
+// taille de la case, taille des chiffres). Classement, chiffres, site et noms enregistrés à part (key).
+window.APP_CONFIG.ballondorTop10ParisUnited = {
+  ...window.APP_CONFIG.ballondorTop10,
+  key: 'top10pu',
+  filePrefix: 'ballon-dor-top10-parisunited',
+  numberBox: { x: 412, w: 46, h: 36, size: 26 },
+};

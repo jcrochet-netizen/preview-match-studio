@@ -109,6 +109,13 @@ dorés, dessinés par l'outil), la vignette ronde du joueur, son nom et le logo 
 - Les lignes (centres verticaux), le rang, la vignette, le nom, le logo du club et la zone du logo du site
   sont dans `js/config.js`, `ballondorTop10`, en pixels de l'image finale.
 
+### Déclinaison « Top 10 - ParisUnited » (`ballondor-top10-parisunited.html`)
+
+Même visuel que le Top 10 16/9, sans rang automatique : chaque ligne a une case où l'on saisit jusqu'à
+2 chiffres (ex. 99), dessinée sur l'image (cadre doré, chiffres dorés). Classement, chiffres, site et style
+des noms sont enregistrés à part du Top 10 Ballon d'Or. Réglages : `ballondorTop10ParisUnited` à la fin de
+`js/config.js` (`numberBox` : position et taille de la case).
+
 ## Ajouter un site et son template (pour toute l'équipe)
 
 Chaque site a son propre template : choisir le site dans le menu charge son fond et place son logo.

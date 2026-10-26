@@ -9,8 +9,13 @@
   const L = CFG[document.body.dataset.layout] || CFG.ballondorTop10;
   const W = L.width || CFG.width;
   const H = L.height || CFG.height;
-  // Classement et site sont partagés entre les formats ; le style des noms est propre à chacun
-  const NAMES_KEY = `${L.namesKey || 'top10'}:names`;
+  // Classement et site sont partagés entre les formats d'un même visuel (key) ; le style des noms est
+  // propre à chaque format (namesKey). Une déclinaison (ex. ParisUnited) a sa propre key.
+  const KEY = L.key || 'top10';
+  const NAMES_KEY = `${L.namesKey || KEY}:names`;
+  // Chiffres saisis dans une case par ligne (numberBox) à la place du rang automatique
+  const MANUAL = !!L.numberBox;
+  const cleanNumber = (v) => String(v || '').replace(/\D/g, '').slice(0, 2);
   const MIME = { jpeg: 'image/jpeg', webp: 'image/webp', png: 'image/png' };
   const EXT = { 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/png': '.png' };
   const QUALITY = 0.92;
@@ -130,9 +135,11 @@
     template: null,
     // Classement : id Sportmonks du joueur de chaque ligne ('' = vide), mémorisé
     ranking: (() => {
-      const saved = prefs.get('top10:ranking', []);
+      const saved = prefs.get(`${KEY}:ranking`, []);
       return Array.from({ length: COUNT }, (_, i) => (byId.has(String(saved[i])) ? String(saved[i]) : ''));
     })(),
+    // Chiffre de chaque ligne (visuel sans rang automatique), jusqu'à 2 chiffres
+    numbers: Array.from({ length: COUNT }, (_, i) => cleanNumber(prefs.get(`${KEY}:numbers`, [])[i])),
     names: { font: 'inter', color: '#ffffff', size: L.name.size, ...prefs.get(NAMES_KEY, {}) },
   };
   const thumbs = new Map(); // id → vignette chargée (ou null si indisponible)
@@ -210,7 +217,7 @@
       c.fillStyle = '#0b0b0b';
       c.fillRect(0, 0, W, H);
     }
-    L.rows.forEach((y, i) => drawRank(c, k, i + 1, y));
+    L.rows.forEach((y, i) => (MANUAL ? drawNumberBox(c, k, state.numbers[i], y) : drawRank(c, k, i + 1, y)));
     state.ranking.forEach((id, i) => {
       const player = byId.get(id);
       if (!player) return;
@@ -223,7 +230,11 @@
 
   // Classement : chiffres dorés en dégradé (comme le titre du template), affichés sur les 10 lignes
   function drawRank(c, k, n, y) {
-    const { x, size } = L.rank;
+    goldText(c, k, String(n), L.rank.x, y, L.rank.size);
+  }
+
+  // Chiffres dorés en dégradé, centrés en (x, y) d'après la hauteur des chiffres
+  function goldText(c, k, text, x, y, size) {
     c.save();
     c.font = `600 ${size}px Oswald, Impact, sans-serif`;
     c.textAlign = 'center';
@@ -237,8 +248,32 @@
     c.fillStyle = gold;
     c.shadowColor = 'rgba(0, 0, 0, 0.7)';
     c.shadowBlur = 6 * k;
-    c.fillText(String(n), x, base);
+    c.fillText(text, x, base);
     c.restore();
+  }
+
+  // Case du chiffre saisi (sur chaque ligne) : fond sombre, liseré doré, chiffres dorés au centre
+  function drawNumberBox(c, k, text, y) {
+    const { x, w, h, size } = L.numberBox;
+    const top = y - h / 2;
+    c.save();
+    roundRect(c, x - w / 2, top, w, h, h * 0.22);
+    const bg = c.createLinearGradient(0, top, 0, top + h);
+    bg.addColorStop(0, 'rgba(66, 50, 20, 0.92)');
+    bg.addColorStop(1, 'rgba(14, 10, 4, 0.92)');
+    c.fillStyle = bg;
+    c.shadowColor = 'rgba(0, 0, 0, 0.6)';
+    c.shadowBlur = 6 * k;
+    c.fill();
+    c.shadowColor = 'transparent';
+    const edge = c.createLinearGradient(0, top, 0, top + h);
+    edge.addColorStop(0, '#f6dc8a');
+    edge.addColorStop(1, '#9a6b25');
+    c.lineWidth = 1.5;
+    c.strokeStyle = edge;
+    c.stroke();
+    c.restore();
+    if (text) goldText(c, k, text, x, y, size);
   }
 
   // Logo du club, centré dans sa colonne
@@ -381,9 +416,21 @@
     for (let i = 0; i < COUNT; i++) {
       const li = document.createElement('li');
       li.className = 'rank-row';
-      const numEl = document.createElement('span');
-      numEl.className = 'rank-num';
-      numEl.textContent = i + 1;
+      let numEl;
+      if (MANUAL) {
+        // Case à chiffres : 2 chiffres au plus, tout autre caractère est retiré
+        numEl = document.createElement('input');
+        numEl.className = 'rank-input';
+        numEl.type = 'text';
+        numEl.inputMode = 'numeric';
+        numEl.maxLength = 2;
+        numEl.autocomplete = 'off';
+        numEl.addEventListener('input', () => setNumber(i, numEl.value));
+      } else {
+        numEl = document.createElement('span');
+        numEl.className = 'rank-num';
+        numEl.textContent = i + 1;
+      }
       const thumb = document.createElement('img');
       thumb.className = 'rank-thumb';
       thumb.alt = '';
@@ -398,8 +445,9 @@
       club.hidden = true;
       li.append(numEl, thumb, select, club);
       els.rankList.append(li);
-      rows.push({ select, thumb, club });
+      rows.push({ select, thumb, club, num: numEl });
     }
+    els.rankList.classList.toggle('is-manual', MANUAL);
   }
 
   function populateRankMenus() {
@@ -410,8 +458,12 @@
   }
 
   function refreshUI() {
-    rows.forEach(({ select, thumb, club }, i) => {
+    rows.forEach(({ select, thumb, club, num }, i) => {
       const id = state.ranking[i];
+      if (MANUAL) {
+        if (num.value !== state.numbers[i]) num.value = state.numbers[i];
+        num.setAttribute('aria-label', t('top10.numberLabel', { n: i + 1 }));
+      }
       select.value = id;
       // Un joueur ne peut occuper qu'une ligne
       [...select.options].forEach((o) => { o.disabled = !!o.value && o.value !== id && state.ranking.includes(o.value); });
@@ -449,9 +501,16 @@
     toastTimer = setTimeout(() => els.toast.classList.remove('show'), 3200);
   }
 
+  function setNumber(i, value) {
+    state.numbers[i] = cleanNumber(value);
+    if (rows[i].num.value !== state.numbers[i]) rows[i].num.value = state.numbers[i];
+    prefs.set(`${KEY}:numbers`, state.numbers);
+    draw();
+  }
+
   function setRank(i, id) {
     state.ranking[i] = id;
-    prefs.set('top10:ranking', state.ranking);
+    prefs.set(`${KEY}:ranking`, state.ranking);
     ensureThumb(id);
     refreshUI();
     draw();
@@ -480,7 +539,7 @@
     if (token !== siteToken) return;
     state.site = site ? { ...site, img: logo ? trimTransparent(logo) : null } : null;
     els.siteSelect.value = site ? site.id : '';
-    prefs.set('top10:site', site ? site.id : '');
+    prefs.set(`${KEY}:site`, site ? site.id : '');
     draw();
   }
 
@@ -540,7 +599,11 @@
     els.siteSelect.addEventListener('change', () => selectSite(els.siteSelect.value));
     els.resetBtn.addEventListener('click', () => {
       state.ranking = state.ranking.map(() => '');
-      prefs.set('top10:ranking', state.ranking);
+      prefs.set(`${KEY}:ranking`, state.ranking);
+      if (MANUAL) {
+        state.numbers = state.numbers.map(() => '');
+        prefs.set(`${KEY}:numbers`, state.numbers);
+      }
       refreshUI();
       draw();
     });
@@ -592,7 +655,7 @@
   populateSites();
   refreshUI();
   loadImage(L.template).then((img) => { state.template = img; draw(); }).catch(() => draw());
-  selectSite(prefs.get('top10:site', ''));
+  selectSite(prefs.get(`${KEY}:site`, ''));
   state.ranking.forEach((id) => ensureThumb(id));
   if (document.fonts) {
     document.fonts.ready.then(draw);
