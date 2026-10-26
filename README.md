@@ -79,6 +79,10 @@ détourée par IA comme sur les pages joueur (mêmes réglages : moteur, rognage
   claire du logo (`logoOnDark` dans `js/config.js`) est utilisée quand elle existe.
 - Les cases (centre, sol, taille, contour) sont décrites dans `js/config.js`, `playerLayouts.ballondor`,
   en pixels de l'image finale.
+- Format 3:2 (1200 × 800 px) pour Topmercato : avec ce site, un choix « Format de l'image » apparaît sous
+  le menu Site (16:9 ou 3:2, mémorisé). Le 3:2 utilise `ballondor-top3TM.png` et ses propres cases ; les
+  photos détourées sont gardées, et le titre et les noms ont leur position pour chaque format. Les formats
+  sont dans `playerLayouts.ballondor.formats` (`sites` : sites qui les proposent).
 
 ## Ballon d'Or — Top 10 (`ballondor-top10.html`, `ballondor-top10-vertical.html`)
 

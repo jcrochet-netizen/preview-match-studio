@@ -199,6 +199,7 @@ window.APP_I18N = {
       'names.note': 'Saisissez les noms dans les cartes des joueurs. Glissez un nom sur l\'image pour le déplacer ; il est réduit s\'il dépasse la largeur de la case.',
 
       // Visuel Ballon d'Or « Top 10 » (ballondor-top10.html)
+      'format.title': 'Format de l\'image',
       'visual.title': 'Visuel',
       'visual.top3': 'Top 3',
       'visual.top10': 'Top 10 - 16/9',
@@ -430,6 +431,7 @@ window.APP_I18N = {
       'names.note': 'Type the names in the player cards. Drag a name on the image to move it; it shrinks if it\'s wider than the box.',
 
       // Visuel Ballon d'Or « Top 10 » (ballondor-top10.html)
+      'format.title': 'Image format',
       'visual.title': 'Visual',
       'visual.top3': 'Top 3',
       'visual.top10': 'Top 10 - 16/9',
@@ -661,6 +663,7 @@ window.APP_I18N = {
       'names.note': 'Digite os nomes nos cartões dos jogadores. Arraste um nome na imagem para movê-lo; ele diminui se for mais largo que o quadro.',
 
       // Visuel Ballon d'Or « Top 10 » (ballondor-top10.html)
+      'format.title': 'Formato da imagem',
       'visual.title': 'Visual',
       'visual.top3': 'Top 3',
       'visual.top10': 'Top 10 - 16/9',

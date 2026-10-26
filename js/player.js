@@ -6,15 +6,19 @@
 
   const CFG = window.APP_CONFIG;
   const I18N = window.APP_I18N;
-  const W = CFG.width;
-  const H = CFG.height;
   const SPORT = 'nba';
   const LAYOUT_ID = CFG.playerLayouts[document.body.dataset.layout] ? document.body.dataset.layout : 'player';
-  const LAYOUT = CFG.playerLayouts[LAYOUT_ID];
-  const SLOTS = LAYOUT.slots || null; // cases fixes : chaque joueur est posé sur le sol de sa case
+  const BASE_LAYOUT = CFG.playerLayouts[LAYOUT_ID];
+  // Format de l'image : celui du layout (16:9), ou un format proposé au site choisi (BASE_LAYOUT.formats,
+  // ex. 3:2 pour Topmercato) qui remplace taille, template, titre, logo et cases — voir applyFormat
+  let FORMAT = null;
+  let LAYOUT = BASE_LAYOUT;
+  let W = CFG.width;
+  let H = CFG.height;
+  let SLOTS = LAYOUT.slots || null; // cases fixes : chaque joueur est posé sur le sol de sa case
   const COUNT = SLOTS ? SLOTS.length : Math.min(2, Math.max(1, LAYOUT.players || 1));
   const OPTIONAL_LOGO = LAYOUT.siteLogo === 'optional';
-  const TITLE = LAYOUT.title || null; // titre facultatif (page Ballon d'Or)
+  let TITLE = LAYOUT.title || null; // titre facultatif (page Ballon d'Or)
   const NAME_SIZE = 28; // taille des noms sous les cases (réduite si le nom est plus large que la case)
   // Ambiances de lumière proposées (réglages dans js/config.js)
   const LOOKS = CFG.lightLooks;
@@ -28,14 +32,16 @@
   const QUALITY = 0.92;
   const SNAP = 10;
   // Position horizontale (centre du joueur) des boutons « À gauche / Au centre / À droite »
-  const ANCHORS = { left: 330, center: W / 2, right: W - 330 };
+  let ANCHORS = { left: 330, center: W / 2, right: W - 330 };
   // Position de départ de chaque joueur, et largeur maximale à 100 % (en part de l'image)
   const START = COUNT === 1 ? ['left'] : ['left', 'right'];
   const MAX_WIDTH = COUNT === 1 ? 0.6 : 0.45;
   const startX = (i) => (SLOTS ? SLOTS[i].x : ANCHORS[START[i]]);
   // Nom sous la case : position mémorisée, sinon le centre de la zone prévue dans la config
   const nameZone = (i) => (SLOTS && SLOTS[i].name) || null;
-  const nameStart = (i) => (nameZone(i) ? prefs.get(`${LAYOUT_ID}:namePos:${i}`, null) || { x: nameZone(i).x, y: nameZone(i).y } : { x: 0, y: 0 });
+  // Positions du titre et des noms enregistrées pour chaque format (16:9 : clés d'origine, sans suffixe)
+  const fmtKey = (key) => (FORMAT ? `${key}@${FORMAT.id}` : key);
+  const nameStart = (i) => (nameZone(i) ? prefs.get(fmtKey(`${LAYOUT_ID}:namePos:${i}`), null) || { x: nameZone(i).x, y: nameZone(i).y } : { x: 0, y: 0 });
   const floorY = (i) => (SLOTS ? SLOTS[i].floor : H);
 
   // ---------- Utilitaires ----------
@@ -427,6 +433,8 @@
 
   const els = {
     stage: $('#stage'),
+    formatField: $('#formatField'),
+    formatSeg: $('#formatSeg'),
     canvas: $('#editor'),
     stageBusy: $('#stageBusy'),
     stageBusyText: $('#stageBusyText'),
@@ -1023,17 +1031,72 @@
     els.siteSelect.value = state.site ? state.site.id : '';
   }
 
+  // Formats proposés au site, en plus du 16:9 (ex. 3:2 pour Topmercato)
+  const siteFormats = (site) => (site ? (BASE_LAYOUT.formats || []).filter((f) => f.sites.includes(site.id)) : []);
+
+  // Change le format de l'image sans perdre les photos : joueurs reposés dans leurs cases, titre et noms
+  // à leur place pour ce format, détourages recalculés (rognage et liseré dépendent de la taille des cases)
+  function applyFormat(format) {
+    if (format === FORMAT) return;
+    FORMAT = format;
+    LAYOUT = format ? { ...BASE_LAYOUT, ...format } : BASE_LAYOUT;
+    W = LAYOUT.width || CFG.width;
+    H = LAYOUT.height || CFG.height;
+    SLOTS = LAYOUT.slots || null;
+    TITLE = LAYOUT.title || null;
+    ANCHORS = { left: 330, center: W / 2, right: W - 330 };
+    els.stage.style.aspectRatio = format ? `${W} / ${H}` : '';
+    state.players.forEach((p, i) => {
+      if (p.placed) {
+        p.x = startX(i);
+        p.y = floorY(i);
+      }
+      ({ x: p.nameX, y: p.nameY } = nameStart(i));
+      applyCutout(i);
+    });
+    if (state.title) {
+      const pos = prefs.get(fmtKey(`${LAYOUT_ID}:titlePos`), null) || (format ? null : prefs.get(`${LAYOUT_ID}:title`, null));
+      state.title.x = pos && pos.x != null ? pos.x : TITLE.x;
+      state.title.y = pos && pos.y != null ? pos.y : TITLE.y;
+    }
+    sizeCanvas();
+  }
+
+  // Choix du format sous le menu Site, affiché seulement quand le site en propose plusieurs
+  function renderFormats() {
+    if (!els.formatField) return;
+    const formats = siteFormats(state.site);
+    els.formatField.hidden = !formats.length;
+    const base = { id: '', label: '16:9', width: BASE_LAYOUT.width || CFG.width, height: BASE_LAYOUT.height || CFG.height };
+    els.formatSeg.replaceChildren(...[base, ...formats].map((f) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.format = f.id;
+      b.textContent = `${f.label} · ${f.width} × ${f.height}`;
+      b.setAttribute('aria-pressed', String((FORMAT ? FORMAT.id : '') === f.id));
+      return b;
+    }));
+  }
+
+  function setFormat(id) {
+    if (!state.site) return;
+    prefs.set(`${LAYOUT_ID}:format:${state.site.id}`, id);
+    selectSite(state.site.id);
+  }
+
   async function selectSite(id) {
     const token = ++siteToken;
     const sites = pageSites();
     const site = sites.find((s) => s.id === id) || (OPTIONAL_LOGO ? null : sites[0]);
-    const templatePath = LAYOUT.template || (site && site.template);
+    const format = siteFormats(site).find((f) => f.id === prefs.get(`${LAYOUT_ID}:format:${site && site.id}`, '')) || null;
+    const templatePath = (format && format.template) || BASE_LAYOUT.template || (site && site.template);
     const [template, logo] = await Promise.all([
       templatePath ? loadImage(templatePath).catch(() => null) : null,
       // Fond sombre : version claire du logo quand elle existe
       site && site.logo ? loadImage((LAYOUT.dark && site.logoOnDark) || site.logo).catch(() => null) : null,
     ]);
     if (token !== siteToken) return;
+    applyFormat(format);
     state.site = site ? { ...site, img: logo ? (trimTransparent(logo, 1200) || logo) : null } : null;
     state.template = template;
     const ambient = ambientColor(template);
@@ -1043,6 +1106,7 @@
     }
     els.siteSelect.value = site ? site.id : '';
     prefs.set(`${LAYOUT_ID}:site`, site ? site.id : '');
+    renderFormats();
     refreshUI();
     draw();
   }
@@ -1221,7 +1285,12 @@
   }
 
   function saveTitle() {
-    prefs.set(`${LAYOUT_ID}:title`, state.title);
+    if (!FORMAT) return prefs.set(`${LAYOUT_ID}:title`, state.title);
+    // Autre format : le style reste commun, la position est enregistrée à part
+    const { x, y, ...style } = state.title;
+    prefs.set(`${LAYOUT_ID}:title`, { ...prefs.get(`${LAYOUT_ID}:title`, {}), ...style });
+    prefs.set(fmtKey(`${LAYOUT_ID}:titlePos`), { x, y });
+    return undefined;
   }
 
   function setTitle(changes) {
@@ -1240,7 +1309,7 @@
 
   function saveNamePos(i) {
     const p = state.players[i];
-    prefs.set(`${LAYOUT_ID}:namePos:${i}`, { x: Math.round(p.nameX), y: Math.round(p.nameY) });
+    prefs.set(fmtKey(`${LAYOUT_ID}:namePos:${i}`), { x: Math.round(p.nameX), y: Math.round(p.nameY) });
   }
 
   function recenterNames() {
@@ -1248,7 +1317,7 @@
       if (!nameZone(i)) return;
       p.nameX = nameZone(i).x;
       p.nameY = nameZone(i).y;
-      prefs.set(`${LAYOUT_ID}:namePos:${i}`, null);
+      prefs.set(fmtKey(`${LAYOUT_ID}:namePos:${i}`), null);
     });
     state.nameSelected = -1;
     refreshUI();
@@ -1322,7 +1391,7 @@
     draw();
     const names = state.players.map((p) => slugify(p.name.trim() || p.photo.name)).filter(Boolean);
     const base = LAYOUT.filePrefix ? [LAYOUT.filePrefix, ...names].join('-') : names.join('-vs-');
-    els.filenameInput.value = [base, state.site && state.site.id].filter(Boolean).join('-');
+    els.filenameInput.value = [base, state.site && state.site.id, FORMAT && FORMAT.id].filter(Boolean).join('-');
     els.previewImg.setAttribute('src', '');
     els.dialog.showModal();
     await renderPreview();
@@ -1538,6 +1607,12 @@
       setPhoto(i, file);
     });
 
+    if (els.formatSeg) {
+      els.formatSeg.addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-format]');
+        if (b && b.getAttribute('aria-pressed') !== 'true') setFormat(b.dataset.format);
+      });
+    }
     els.engineSelect.value = prefs.get('player:engine', 'isnet');
     els.engineSelect.addEventListener('change', () => prefs.set('player:engine', els.engineSelect.value));
     // Ambiance de lumière : recalcul des joueurs regroupé pendant qu'on fait glisser l'intensité

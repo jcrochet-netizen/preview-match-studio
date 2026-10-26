@@ -105,6 +105,25 @@ window.APP_CONFIG = {
         { x: 962, floor: 596, maxW: 310, maxH: 400, side: 'right', clip: [[894, 0], [1279, 0], [1118, 596], [733, 596]],
           name: { x: 944, y: 629, w: 328 } },
       ],
+      // Formats proposés en plus du 16:9 à certains sites (choix « Format » sous le menu Site) : chacun
+      // remplace la taille, le template, le titre, la zone du logo et les cases (px de son image)
+      formats: [
+        {
+          id: '3x2', label: '3:2', width: 1200, height: 800, sites: ['topmercato'],
+          template: 'assets/templates/ballondor-top3TM.png',
+          title: { x: 600, y: 100, size: 60, color: '#ffffff', maxW: 760 },
+          logo: { x: 1056, y: 24, w: 120, h: 40 },
+          // Cases séparées par des traits verticaux (x 410 et 789), sol à y 676, noms dans la bande noire (676 → 767)
+          slots: [
+            { x: 203, floor: 676, maxW: 330, maxH: 460, side: 'left', clip: [[0, 0], [408, 0], [408, 676], [0, 676]],
+              name: { x: 202, y: 721, w: 360 } },
+            { x: 592, floor: 676, maxW: 320, maxH: 460, side: 'center', clip: [[412, 0], [787, 0], [787, 676], [412, 676]],
+              name: { x: 598, y: 721, w: 330 } },
+            { x: 978, floor: 676, maxW: 330, maxH: 460, side: 'right', clip: [[791, 0], [1200, 0], [1200, 676], [791, 676]],
+              name: { x: 986, y: 721, w: 330 } },
+          ],
+        },
+      ],
     },
   },
 
