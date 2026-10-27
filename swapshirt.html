@@ -96,11 +96,20 @@
           <output id="brushSizeOut"></output>
         </label>
         <label class="check"><input type="checkbox" id="showZone"> <span data-i18n="swap.showZone">Afficher la zone du maillot</span></label>
+        <label class="range"><span data-i18n="swap.tearShift">Position de la déchirure</span>
+          <input type="range" id="tearShift" min="-40" max="40" step="0.5">
+          <output id="tearShiftOut"></output>
+        </label>
+        <label class="range"><span data-i18n="swap.tearTilt">Inclinaison</span>
+          <input type="range" id="tearTilt" min="-60" max="60" step="0.5">
+          <output id="tearTiltOut"></output>
+        </label>
         <label class="range"><span data-i18n="swap.tearWidth">Largeur de la déchirure</span>
           <input type="range" id="tearWidth" min="0" max="300" step="10">
           <output id="tearWidthOut"></output>
         </label>
         <div class="row-btns">
+          <button class="btn small ghost" id="tearCenterBtn" type="button" data-i18n="swap.tearCenter">Recentrer la déchirure</button>
           <button class="btn small ghost" id="newTearBtn" type="button" data-i18n="swap.tearNew">Nouvelle déchirure</button>
           <button class="btn small ghost" id="resetZoneBtn" type="button" data-i18n="swap.resetZone">Revenir à la détection</button>
         </div>
@@ -114,6 +123,7 @@
 
       <section class="card">
         <h2><span class="step">5</span><span data-i18n="swap.renderTitle">Rendu</span></h2>
+        <label class="check"><input type="checkbox" id="fillZone" checked> <span data-i18n="swap.fill">Couvrir toute la moitié (bout des manches, col) avec les couleurs du nouveau maillot</span></label>
         <label class="range"><span data-i18n="swap.light">Lumière de la photo</span>
           <input type="range" id="lightRange" min="0" max="100" step="5">
           <output id="lightOut"></output>

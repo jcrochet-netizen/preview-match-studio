@@ -116,13 +116,14 @@
     };
   }
 
-  // Flou rapide d'un tableau (trois passes de moyenne glissante, proche d'un flou gaussien)
-  function blur(src, w, h, r) {
+  // Flou rapide d'un tableau (trois passes de moyenne glissante, proche d'un flou gaussien ; une passe =
+  // simple moyenne sur un carré)
+  function blur(src, w, h, r, passes = 3) {
     const out = Float32Array.from(src);
     if (r < 1) return out;
     const tmp = new Float32Array(w * h);
     const n = 2 * r + 1;
-    for (let pass = 0; pass < 3; pass++) {
+    for (let pass = 0; pass < passes; pass++) {
       for (let y = 0; y < h; y++) {
         const row = y * w;
         let acc = 0;
@@ -212,18 +213,22 @@
     mask: null, // zone du maillot (canvas à la taille de la photo, opacité = zone)
     autoMask: null, // zone trouvée par la détection, pour y revenir
     shape: null, // { box, cx, cy, bw, bh, top, bottom } : cadre de travail et mesures de la zone
-    tear: { top: 0, bottom: 0, set: false, seed: 7, width: prefs.get('swap:tearWidth', 100) },
+    // Déchirure : ligne automatique (milieu du col → milieu du bas du maillot), décalée et inclinée par
+    // l'utilisateur (en % de la largeur du maillot) ; top et bottom = position obtenue, en px de la photo
+    tear: { auto: null, shift: 0, tilt: 0, top: 0, bottom: 0, seed: 7, width: prefs.get('swap:tearWidth', 100) },
     halves: [makeHalf(), makeHalf()],
     active: 0, // moitié sélectionnée (outils Déplacer et Déformer)
     tool: 'move',
     brush: prefs.get('swap:brush', 60),
     showZone: false,
+    fill: prefs.get('swap:fill', true), // zone entière couverte par le nouveau maillot (manches, col)
     light: prefs.get('swap:light', 80),
     folds: prefs.get('swap:folds', 60),
     format: prefs.get('swap:format', 'original'),
     frames: {}, // cadrage par format : { zoom, cx, cy }
     detect: { busy: false, frac: null, text: '' },
     pointer: null, // dernière position du pointeur sur la photo (curseur du pinceau)
+    faceX: null, // centre du visage détecté (px de la photo), pour placer la déchirure
   };
 
   const cache = {
@@ -268,9 +273,15 @@
     showZone: $('#showZone'),
     tearWidth: $('#tearWidth'),
     tearWidthOut: $('#tearWidthOut'),
+    tearShift: $('#tearShift'),
+    tearShiftOut: $('#tearShiftOut'),
+    tearTilt: $('#tearTilt'),
+    tearTiltOut: $('#tearTiltOut'),
+    tearCenterBtn: $('#tearCenterBtn'),
     newTearBtn: $('#newTearBtn'),
     resetZoneBtn: $('#resetZoneBtn'),
     halves: $('#halves'),
+    fillZone: $('#fillZone'),
     lightRange: $('#lightRange'),
     lightOut: $('#lightOut'),
     foldsRange: $('#foldsRange'),
@@ -339,10 +350,15 @@
     let sx = 0;
     let sy = 0;
     let n = 0;
+    const rows = []; // [gauche, droite] de la zone sur chaque ligne
     for (let y = 0; y < c.height; y++) {
+      let rl = -1;
+      let rr = -1;
       for (let col = 0; col < c.width; col++) {
         const a = d[(y * c.width + col) * 4 + 3];
         if (a < 60) continue;
+        if (rl < 0) rl = col;
+        rr = col;
         if (col < minX) minX = col;
         if (col > maxX) maxX = col;
         if (y < minY) minY = y;
@@ -351,8 +367,22 @@
         sy += y;
         n++;
       }
+      rows.push(rl < 0 ? null : [rl, rr]);
     }
     if (n < 12) { state.shape = null; return; }
+    // Milieu de la zone sur une tranche de lignes (fractions de la hauteur) : col en haut, bas du maillot
+    const middle = (f0, f1) => {
+      let sum = 0;
+      let count = 0;
+      const y0 = Math.round(minY + (maxY - minY) * f0);
+      const y1 = Math.round(minY + (maxY - minY) * f1);
+      for (let y = y0; y <= y1; y++) {
+        if (!rows[y]) continue;
+        sum += (rows[y][0] + rows[y][1] + 1) / 2;
+        count++;
+      }
+      return count ? sum / count / k : null;
+    };
     const bw = (maxX - minX + 1) / k;
     const bh = (maxY - minY + 1) / k;
     const mx = bw * 0.1;
@@ -369,6 +399,8 @@
       bh,
       top: minY / k,
       bottom: (maxY + 1) / k,
+      neckX: middle(0, 0.06),
+      hemX: middle(0.86, 0.97),
     };
   }
 
@@ -481,8 +513,8 @@
       for (let col = 0; col < w; col++) {
         const i = y * w + col;
         if (label[i] < 0) continue;
-        for (let dy = -2; dy <= 2 && !edge[i]; dy++) {
-          for (let dx = -2; dx <= 2; dx++) {
+        for (let dy = -3; dy <= 3 && !edge[i]; dy++) {
+          for (let dx = -3; dx <= 3; dx++) {
             const yy = y + dy;
             const xx = col + dx;
             if (yy < 0 || yy >= h || xx < 0 || xx >= w) continue;
@@ -492,7 +524,7 @@
       }
     }
     const edgeSoft = blur(edge, w, h, Math.max(1, Math.round(sw * 0.006)));
-    for (let i = 0; i < n; i++) folds[i] = 1 + (folds[i] - 1) * clamp(1 - edgeSoft[i] * 1.6, 0, 1);
+    for (let i = 0; i < n; i++) folds[i] = 1 + (folds[i] - 1) * clamp(1 - edgeSoft[i] * 2.2, 0, 1);
     // La lumière générale varie doucement : lissée sur le maillot, sans marche entre familles
     const Mall = new Float32Array(n);
     const BM = new Float32Array(n);
@@ -616,6 +648,14 @@
     px.fillStyle = g;
     px.fill();
     px.restore();
+    // Fin trait d'ombre le long des bords : la déchirure reste lisible sur un maillot blanc
+    px.lineWidth = Math.max(1, e.base * 0.4);
+    px.strokeStyle = 'rgba(0, 0, 0, 0.32)';
+    [L, R].forEach((pts) => {
+      px.beginPath();
+      pts.forEach(([x, y], i) => (i ? px.lineTo(x, y) : px.moveTo(x, y)));
+      px.stroke();
+    });
     // Fibres claires le long des bords
     px.lineWidth = Math.max(0.6, e.base * 0.18);
     px.strokeStyle = 'rgba(255, 255, 255, 0.95)';
@@ -763,6 +803,13 @@
     x.imageSmoothingQuality = 'high';
     drawShirt(x, h);
     x.restore();
+    // Zone entière couverte : là où l'image du maillot ne va pas (bout des manches, col), ses couleurs
+    // voisines prolongées
+    if (state.fill) {
+      x.globalCompositeOperation = 'destination-over';
+      x.drawImage(fillTransparent(layer, 4), 0, 0, b.w, b.h);
+      x.globalCompositeOperation = 'source-over';
+    }
     if (h.bright) {
       x.globalCompositeOperation = 'source-atop';
       x.fillStyle = h.bright > 0 ? `rgba(255, 255, 255, ${(h.bright / 100) * 0.8})` : `rgba(0, 0, 0, ${(-h.bright / 100) * 0.8})`;
@@ -787,6 +834,30 @@
     x.drawImage(cache.halfMasks[i], 0, 0);
     x.globalCompositeOperation = 'source-over';
     cache.layers[i] = layer;
+  }
+
+  // Zones transparentes remplies par les couleurs voisines (pyramide « push-pull », réduite d'un facteur
+  // « factor ») : chaque niveau plus petit moyenne les pixels couverts, puis comble les trous du niveau au-dessus
+  function fillTransparent(src, factor) {
+    let cur = makeCanvas(src.width / factor, src.height / factor);
+    cur.getContext('2d').drawImage(src, 0, 0, cur.width, cur.height);
+    const levels = [cur];
+    while (cur.width > 1 || cur.height > 1) {
+      const next = makeCanvas(Math.ceil(cur.width / 2), Math.ceil(cur.height / 2));
+      const nx = next.getContext('2d');
+      nx.drawImage(cur, 0, 0, next.width, next.height);
+      // Pixels partiellement couverts rendus opaques : même couleur, opacité renforcée
+      for (let q = 0; q < 3; q++) nx.drawImage(next, 0, 0);
+      levels.push(next);
+      cur = next;
+    }
+    for (let i = levels.length - 2; i >= 0; i--) {
+      const lx = levels[i].getContext('2d');
+      lx.globalCompositeOperation = 'destination-over';
+      lx.drawImage(levels[i + 1], 0, 0, levels[i].width, levels[i].height);
+      lx.globalCompositeOperation = 'source-over';
+    }
+    return levels[0];
   }
 
   // Placement de départ : le maillot couvre la zone détectée, col en haut de la zone
@@ -844,11 +915,20 @@
         stack.push(j);
       }
     }
-    for (let i = 0; i < w * h; i++) {
-      if (bg[i]) { d[i * 4 + 3] = 0; continue; }
-      // Bord adouci : pixel du maillot touchant le fond
+    // Le bord du maillot est mélangé au fond (liseré clair) : on retire deux rangées de pixels, pour ne
+    // garder que la vraie couleur du maillot (elle sert aussi à compléter la zone), puis on adoucit le bord
+    const touchesBg = (i) => {
       const px = i % w;
-      if ((px > 0 && bg[i - 1]) || (px < w - 1 && bg[i + 1]) || (i >= w && bg[i - w]) || (i < w * (h - 1) && bg[i + w])) d[i * 4 + 3] = 150;
+      return (px > 0 && bg[i - 1]) || (px < w - 1 && bg[i + 1]) || (i >= w && bg[i - w]) || (i < w * (h - 1) && bg[i + w]);
+    };
+    for (let pass = 0; pass < 2; pass++) {
+      const edge = [];
+      for (let i = 0; i < w * h; i++) if (!bg[i] && touchesBg(i)) edge.push(i);
+      edge.forEach((i) => { bg[i] = 1; });
+    }
+    for (let i = 0; i < w * h; i++) {
+      if (bg[i]) d[i * 4 + 3] = 0;
+      else if (touchesBg(i)) d[i * 4 + 3] = 190;
     }
     x.putImageData(img, 0, 0);
     return c;
@@ -880,7 +960,7 @@
       try {
         if (dirty.shape) {
           computeShape();
-          if (!state.tear.set) resetTear();
+          placeTear();
           buildShading();
           state.halves.forEach((h) => { if (h.img && !h.placed) placeHalf(h); });
           dirty.tear = true;
@@ -1085,8 +1165,14 @@
     els.showZone.checked = state.showZone;
     els.tearWidth.value = state.tear.width;
     els.tearWidthOut.textContent = `${state.tear.width} %`;
+    els.tearShift.value = state.tear.shift;
+    els.tearShiftOut.textContent = `${state.tear.shift > 0 ? '+' : ''}${num(state.tear.shift, 1)} %`;
+    els.tearTilt.value = state.tear.tilt;
+    els.tearTiltOut.textContent = `${state.tear.tilt > 0 ? '+' : ''}${num(state.tear.tilt, 1)} %`;
+    [els.tearShift, els.tearTilt, els.tearCenterBtn].forEach((el) => { el.disabled = !state.shape; });
     els.resetZoneBtn.disabled = !state.autoMask;
     els.newTearBtn.disabled = !state.shape;
+    els.fillZone.checked = state.fill;
     els.lightRange.value = state.light;
     els.lightOut.textContent = `${state.light} %`;
     els.foldsRange.value = state.folds;
@@ -1263,7 +1349,10 @@
       return;
     }
     detectToken++;
-    state.tear.set = false;
+    state.tear.auto = null;
+    state.tear.shift = 0;
+    state.tear.tilt = 0;
+    state.faceX = null;
     state.photo = {
       id: Date.now(),
       canvas: loaded.canvas,
@@ -1331,6 +1420,9 @@
       const image = await engine.RawImage.fromBlob(await canvasToBlob(small, 'image/png'));
       const out = await pipe(image);
       if (token !== detectToken) return;
+      const face = out.find((o) => o.label === 'Face');
+      const fx = face ? maskCenterX(face.mask) : null;
+      state.faceX = fx == null ? null : fx / k;
       const hits = out.filter((o) => SW.shirtLabels.includes(o.label)).map((o) => o.mask);
       const mask = hits.length ? maskFromSegmentation(hits) : null;
       state.detect.busy = false;
@@ -1344,7 +1436,8 @@
         state.mask.getContext('2d').drawImage(mask, 0, 0);
         state.halves.forEach((h) => { h.placed = false; });
         computeShape();
-        resetTear();
+        state.tear.auto = null;
+        placeTear();
         toast(t('swap.detected', { s: num((performance.now() - started) / 1000, 1) }));
       }
       invalidate({ shape: true, tint: true });
@@ -1356,6 +1449,19 @@
     }
     refreshUI();
     paint();
+  }
+
+  // Centre horizontal d'une zone du modèle (null si vide)
+  function maskCenterX(raw) {
+    const ch = raw.channels || 1;
+    let sum = 0;
+    let count = 0;
+    for (let i = 0; i < raw.width * raw.height; i++) {
+      if (raw.data[i * ch] <= 127) continue;
+      sum += i % raw.width;
+      count++;
+    }
+    return count > 20 ? sum / count : null;
   }
 
   // Masque du maillot : zones du modèle retenues (SW.shirtLabels) réunies, réduites à la plus grande zone
@@ -1395,9 +1501,20 @@
     const small = makeCanvas(w, h);
     const sx = small.getContext('2d');
     const img = sx.createImageData(w, h);
+    let minX = w;
+    let minY = h;
+    let maxX = -1;
+    let maxY = -1;
     for (let i = 0; i < w * h; i++) {
       const keep = label[i] >= 0 && sizes[label[i]] >= biggest * 0.15;
       img.data.set([255, 255, 255, keep ? 255 : 0], i * 4);
+      if (!keep) continue;
+      const x = i % w;
+      const y = (i - x) / w;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
     }
     sx.putImageData(img, 0, 0);
     const p = state.photo;
@@ -1406,21 +1523,91 @@
     ox.imageSmoothingEnabled = true;
     ox.imageSmoothingQuality = 'high';
     ox.drawImage(small, 0, 0, p.w, p.h);
-    // L'agrandissement étale le bord : on le resserre sur 2 à 3 px
-    const big = ox.getImageData(0, 0, p.w, p.h);
-    const d = big.data;
-    for (let i = 3; i < d.length; i += 4) d[i] = clamp(((d[i] - 80) * 255) / 100, 0, 255);
-    ox.putImageData(big, 0, 0);
+    // Bord affiné sur les contours de la photo, dans le cadre de la zone (avec une marge)
+    const kx = p.w / w;
+    const ky = p.h / h;
+    const mx = (maxX - minX + 1) * kx * 0.08;
+    const x0 = Math.max(0, Math.floor(minX * kx - mx));
+    const y0 = Math.max(0, Math.floor(minY * ky - mx));
+    const x1 = Math.min(p.w, Math.ceil((maxX + 1) * kx + mx));
+    const y1 = Math.min(p.h, Math.ceil((maxY + 1) * ky + mx));
+    refineEdges(out, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
     return out;
   }
 
-  // Déchirure au centre du maillot (centre de gravité de la zone), verticale
-  function resetTear() {
+  // Filtre guidé (He et al.) : le bord de la zone, venu du modèle à basse résolution, se cale sur les vrais
+  // contours de la photo (maillot / peau / fond), net et lisse au lieu d'être en escalier
+  function refineEdges(mask, box) {
+    const { x: bx, y: by, w, h } = box;
+    if (w < 8 || h < 8) return;
+    const n = w * h;
+    const mx = readCtx(mask);
+    const mimg = mx.getImageData(bx, by, w, h);
+    const md = mimg.data;
+    const pd = readCtx(state.photo.canvas).getImageData(bx, by, w, h).data;
+    const I = new Float32Array(n);
+    const P = new Float32Array(n);
+    const II = new Float32Array(n);
+    const IP = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const l = (0.299 * pd[i * 4] + 0.587 * pd[i * 4 + 1] + 0.114 * pd[i * 4 + 2]) / 255;
+      const a = md[i * 4 + 3] / 255;
+      I[i] = l;
+      P[i] = a;
+      II[i] = l * l;
+      IP[i] = l * a;
+    }
+    const r = Math.max(2, Math.round(w * 0.006));
+    const eps = 0.004;
+    const mI = blur(I, w, h, r, 1);
+    const mP = blur(P, w, h, r, 1);
+    const cII = blur(II, w, h, r, 1);
+    const cIP = blur(IP, w, h, r, 1);
+    const A = new Float32Array(n);
+    const B = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = (cIP[i] - mI[i] * mP[i]) / (cII[i] - mI[i] * mI[i] + eps);
+      A[i] = a;
+      B[i] = mP[i] - a * mI[i];
+    }
+    const mA = blur(A, w, h, r, 1);
+    const mB = blur(B, w, h, r, 1);
+    for (let i = 0; i < n; i++) {
+      // Bord resserré sur 1 à 2 px autour du contour trouvé
+      const q = mA[i] * I[i] + mB[i];
+      md[i * 4] = 255;
+      md[i * 4 + 1] = 255;
+      md[i * 4 + 2] = 255;
+      md[i * 4 + 3] = clamp((q - 0.5) * 2.6 + 0.5, 0, 1) * 255;
+    }
+    mx.putImageData(mimg, bx, by);
+  }
+
+  // Ligne automatique de la déchirure : du milieu du col (centre du visage s'il est trouvé et cohérent)
+  // au milieu du bas du maillot
+  function autoTear() {
+    const s = state.shape;
+    let top = s.neckX ?? s.cx;
+    if (state.faceX != null && Math.abs(state.faceX - top) < s.bw * 0.15) top = (top + state.faceX) / 2;
+    return { top, bottom: s.hemX ?? top };
+  }
+
+  // Position de la déchirure : ligne automatique + décalage et inclinaison réglés
+  function placeTear() {
     const s = state.shape;
     if (!s) return;
-    state.tear.top = s.cx;
-    state.tear.bottom = s.cx;
-    state.tear.set = true;
+    if (!state.tear.auto) state.tear.auto = autoTear();
+    const u = s.bw / 100;
+    state.tear.top = state.tear.auto.top + (state.tear.shift - state.tear.tilt / 2) * u;
+    state.tear.bottom = state.tear.auto.bottom + (state.tear.shift + state.tear.tilt / 2) * u;
+  }
+
+  function setTearAdjust(shift, tilt) {
+    state.tear.shift = clamp(shift, -40, 40);
+    state.tear.tilt = clamp(tilt, -60, 60);
+    placeTear();
+    invalidate({ tear: true });
+    refreshUI();
   }
 
   function resetAll() {
@@ -1526,7 +1713,7 @@
       let which = 'both';
       if (near(pt, state.tear.top, s.top, radius)) which = 'top';
       else if (near(pt, state.tear.bottom, s.bottom, radius)) which = 'bottom';
-      drag = { type: 'tear', which, sx: pt.x, top: state.tear.top, bottom: state.tear.bottom };
+      drag = { type: 'tear', which, sx: pt.x, shift: state.tear.shift, tilt: state.tear.tilt };
     } else if (tool === 'frame') {
       if (currentFormat().id === 'original') return;
       const v = view();
@@ -1559,10 +1746,11 @@
       buildTint();
       paint();
     } else if (drag.type === 'tear') {
-      const dx = pt.x - drag.sx;
-      if (drag.which !== 'bottom') state.tear.top = drag.top + dx;
-      if (drag.which !== 'top') state.tear.bottom = drag.bottom + dx;
-      invalidate({ tear: true });
+      // Décalage en % de la largeur du maillot ; une poignée seule incline la ligne autour de l'autre
+      const d = ((pt.x - drag.sx) / state.shape.bw) * 100;
+      if (drag.which === 'both') setTearAdjust(drag.shift + d, drag.tilt);
+      else if (drag.which === 'top') setTearAdjust(drag.shift + d / 2, drag.tilt - d);
+      else setTearAdjust(drag.shift + d / 2, drag.tilt + d);
     } else if (drag.type === 'frame') {
       const fr = frameOf();
       fr.cx = drag.cx - (pt.fx - drag.fx) / drag.s;
@@ -1749,6 +1937,9 @@
       invalidate({ tear: true });
       refreshUI();
     });
+    els.tearShift.addEventListener('input', () => setTearAdjust(Number(els.tearShift.value), state.tear.tilt));
+    els.tearTilt.addEventListener('input', () => setTearAdjust(state.tear.shift, Number(els.tearTilt.value)));
+    els.tearCenterBtn.addEventListener('click', () => setTearAdjust(0, 0));
     els.newTearBtn.addEventListener('click', () => {
       state.tear.seed = Math.floor(Math.random() * 1e6);
       invalidate({ tear: true });
@@ -1760,6 +1951,11 @@
       c.drawImage(state.autoMask, 0, 0);
       c.globalCompositeOperation = 'source-over';
       invalidate({ shape: true, tint: true });
+    });
+    els.fillZone.addEventListener('change', () => {
+      state.fill = els.fillZone.checked;
+      prefs.set('swap:fill', state.fill);
+      invalidate({ layers: allLayers });
     });
     els.lightRange.addEventListener('input', () => {
       state.light = Number(els.lightRange.value);

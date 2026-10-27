@@ -125,14 +125,19 @@ garde le maillot de la photo ou reçoit l'image d'un autre maillot (futur club, 
    par une IA qui tourne dans le navigateur (Transformers.js 3.8.1, modèle `Xenova/segformer_b2_clothes`,
    zones « Upper-clothes » et « Dress ») ; le modèle (≈ 30 Mo, ou ≈ 110 Mo en haute précision) se
    télécharge au premier usage puis reste en cache. Aucune photo n'est envoyée à un serveur.
-2. **Zone et déchirure** : outils « Zone + » / « Zone − » (pinceau) pour corriger la zone du maillot,
-   « Déchirure » pour déplacer la ligne ou l'incliner (poignées haut et bas). Largeur réglable,
-   « Nouvelle déchirure » tire un autre tracé.
+2. **Zone et déchirure** : le bord de la zone détectée est recalé sur les contours de la photo (filtre
+   guidé), pour un col et des manches nets. Outils « Zone + » / « Zone − » (pinceau) pour la corriger.
+   La déchirure part du milieu du col (entre les épaules, et le visage s'il est trouvé) jusqu'au milieu du
+   bas du maillot ; sliders « Position » et « Inclinaison », bouton « Recentrer », ou outil « Déchirure »
+   (glisser la ligne, ou ses poignées haut et bas). Largeur réglable, « Nouvelle déchirure » tire un autre
+   tracé.
 3. **Moitiés** : pour chaque moitié, « Garder le maillot » ou « Nouveau maillot » + image du maillot vu de
    face (PNG transparent, ou photo produit sur fond uni : le fond est retiré). Outil « Déplacer » (glisser,
    molette pour la taille, flèches au pixel), sliders Taille / Rotation / Luminosité, outil « Déformer »
    (grille 3 × 3 de poignées).
-4. **Rendu** : le nouveau maillot reprend la lumière et les plis de la photo. Les pixels du maillot d'origine
+4. **Rendu** : la moitié est entièrement couverte par le nouveau maillot (case cochée par défaut) : là où
+   son image ne va pas (bout des manches, col), ses couleurs voisines sont prolongées. Le fond uni de
+   l'image importée est retiré avec son liseré clair. Le nouveau maillot reprend la lumière et les plis de la photo. Les pixels du maillot d'origine
    sont regroupés par famille de couleur et comparés à leurs voisins de même couleur : on garde l'ombre et
    les plis, pas le dessin de l'ancien maillot (rayures, sponsor, écusson).
 5. **Format** : taille actuelle de la photo (réduite à 2400 px de côté au plus), 3:2 (1200 × 800),
