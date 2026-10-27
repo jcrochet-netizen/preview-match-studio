@@ -12,6 +12,7 @@
   const EXT = { 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/png': '.png' };
   const QUALITY = 0.92;
   const PLAYER_SLOTS = 3;
+  const SEAMS = ['torn', 'clean']; // séparation entre les deux maillots : bande déchirée ou ligne nette
 
   // ---------- Utilitaires ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -137,6 +138,7 @@
     clubName: prefs.get('swap3:club', ''),
     clubName2: prefs.get('swap3:club2', ''),
     split: prefs.get('swap3:split', false), // deux maillots : le 1er sur la moitié gauche, le 2e sur la droite
+    seam: prefs.get('swap3:seam', SEAMS[0]),
     photos: Array(PLAYER_SLOTS).fill(null), // photos du joueur (canvas réduits)
     shirts: [null, null], // photos des maillots (le 2e ne sert qu'avec « split »)
     prompt: '',
@@ -153,6 +155,7 @@
     frames: {}, // cadrage de chaque proposition : { zoom, cx, cy }
   };
   if (!S3.models.includes(state.model)) state.model = S3.models[0];
+  if (!SEAMS.includes(state.seam)) state.seam = SEAMS[0];
 
   let siteToken = 0;
   let drag = null;
@@ -180,6 +183,8 @@
     clubName2: $('#clubName2'),
     shirtPhoto2: $('#shirtPhoto2'),
     splitShirt: $('#splitShirt'),
+    seamField: $('#seamField'),
+    seamSelect: $('#seamSelect'),
     promptInput: $('#promptInput'),
     promptResetBtn: $('#promptResetBtn'),
     modelSelect: $('#modelSelect'),
@@ -219,6 +224,7 @@
         t('swap3.promptIntroSplit', { player, club, club2 }),
         refs,
         t('swap3.promptShirtsSplit', { club, club2 }),
+        t(state.seam === 'torn' ? 'swap3.promptSeamTorn' : 'swap3.promptSeamClean'),
         t('swap3.promptStyle'),
       ].join(' ');
     }
@@ -383,10 +389,13 @@
     }
   }
 
-  // Un ou deux maillots : le 2e (club et photo) apparaît à droite du 1er, qui devient la moitié gauche
+  // Un ou deux maillots : le 2e (club et photo) apparaît à droite du 1er, qui devient la moitié gauche, avec le
+  // choix de la séparation entre les deux
   function applySplit() {
     els.splitShirt.checked = state.split;
     els.shirt2Col.hidden = !state.split;
+    els.seamField.hidden = !state.split;
+    els.seamSelect.replaceChildren(...SEAMS.map((id) => new Option(t(`swap3.seam.${id}`), id, false, id === state.seam)));
     els.shirtPair.classList.toggle('is-split', state.split);
     els.clubLabel.dataset.i18n = state.split ? 'swap3.clubLeft' : 'swap3.clubName';
     els.clubLabel.textContent = t(els.clubLabel.dataset.i18n);
@@ -715,6 +724,12 @@
       prefs.set('swap3:split', state.split);
       applySplit();
       // Prompt modifié à la main : on ne l'écrase pas, mais il doit parler du bon nombre de maillots
+      if (state.promptEdited) toast(t('swap3.promptKept'), true);
+      refreshPrompt();
+    });
+    els.seamSelect.addEventListener('change', () => {
+      state.seam = els.seamSelect.value;
+      prefs.set('swap3:seam', state.seam);
       if (state.promptEdited) toast(t('swap3.promptKept'), true);
       refreshPrompt();
     });

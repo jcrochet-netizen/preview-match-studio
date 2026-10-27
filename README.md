@@ -174,7 +174,9 @@ qu'on ne le modifie pas ; « Revenir au prompt type » le régénère.
 
 **Deux maillots** : la case « Ajouter un 2e maillot » ajoute un 2e club et une 2e photo de maillot. Le 1er maillot
 habille la moitié gauche de l'image, le 2e la moitié droite (séparation verticale au centre du torse, chaque
-manche avec sa moitié). Les deux maillots sont envoyés après les photos du joueur, gauche puis droite, et le
+manche avec sa moitié). « Séparation entre les maillots » : « Déchirée » (par défaut) demande une bande effet
+papier déchiré entre les deux (bords dentelés, liseré blanc, légère ombre), « Nette » une simple ligne droite.
+L'effet est décrit dans le prompt et dessiné par l'IA, pas ajouté après coup. Les deux maillots sont envoyés après les photos du joueur, gauche puis droite, et le
 prompt type l'annonce dans cet ordre. Un prompt modifié à la main n'est pas remplacé quand on coche ou décoche la
 case : il faut alors l'adapter, ou revenir au prompt type.
 
