@@ -1,6 +1,7 @@
 /* Preview Match Studio — page « Swap shirt 3 » : montage généré par l'IA d'OpenAI (API Images, modification à
-   partir de photos). Photos de référence du joueur + photo du maillot + prompt → une ou plusieurs propositions,
-   puis cadrage au format choisi, logo du site et téléchargement. La clé API est collée dans la page. */
+   partir de photos). Photos de référence du joueur + photo du maillot (ou de deux maillots, un par moitié) + prompt
+   → une ou plusieurs propositions, puis cadrage au format choisi, logo du site et téléchargement. La clé API est
+   collée dans la page. */
 (() => {
   'use strict';
 
@@ -134,8 +135,10 @@
     remember: !!prefs.get('swap3:key', ''),
     playerName: prefs.get('swap3:player', ''),
     clubName: prefs.get('swap3:club', ''),
+    clubName2: prefs.get('swap3:club2', ''),
+    split: prefs.get('swap3:split', false), // deux maillots : le 1er sur la moitié gauche, le 2e sur la droite
     photos: Array(PLAYER_SLOTS).fill(null), // photos du joueur (canvas réduits)
-    shirt: null, // photo du maillot
+    shirts: [null, null], // photos des maillots (le 2e ne sert qu'avec « split »)
     prompt: '',
     promptEdited: false,
     model: prefs.get('swap3:model', S3.models[0]),
@@ -170,7 +173,13 @@
     playerName: $('#playerName'),
     playerPhotos: $('#playerPhotos'),
     clubName: $('#clubName'),
+    clubLabel: $('#clubLabel'),
     shirtPhoto: $('#shirtPhoto'),
+    shirtPair: $('#shirtPair'),
+    shirt2Col: $('#shirt2Col'),
+    clubName2: $('#clubName2'),
+    shirtPhoto2: $('#shirtPhoto2'),
+    splitShirt: $('#splitShirt'),
     promptInput: $('#promptInput'),
     promptResetBtn: $('#promptResetBtn'),
     modelSelect: $('#modelSelect'),
@@ -197,15 +206,26 @@
   const slots = []; // cases photo : { root, img, text, kind, index }
 
   // ---------- Prompt ----------
-  // Prompt type, rempli avec le nom du joueur, du club et le nombre de photos de référence (envoyées avant le
-  // maillot, dans cet ordre)
+  // Prompt type, rempli avec le nom du joueur, du ou des clubs et le nombre de photos de référence (envoyées avant
+  // le ou les maillots, dans cet ordre)
   function promptTemplate() {
     const n = state.photos.filter(Boolean).length || 1;
     const player = state.playerName.trim() || t('swap3.playerFallback');
+    const refs = t(n === 1 ? 'swap3.promptRefOne' : 'swap3.promptRefMany', { player, n });
+    if (state.split) {
+      const club = state.clubName.trim() || t('swap3.club1Fallback');
+      const club2 = state.clubName2.trim() || t('swap3.club2Fallback');
+      return [
+        t('swap3.promptIntroSplit', { player, club, club2 }),
+        refs,
+        t('swap3.promptShirtsSplit', { club, club2 }),
+        t('swap3.promptStyle'),
+      ].join(' ');
+    }
     const club = state.clubName.trim() || t('swap3.clubFallback');
     return [
       t('swap3.promptIntro', { player, club }),
-      t(n === 1 ? 'swap3.promptRefOne' : 'swap3.promptRefMany', { player, n }),
+      refs,
       t('swap3.promptShirt', { club }),
       t('swap3.promptStyle'),
     ].join(' ');
@@ -344,12 +364,12 @@
     };
     for (let i = 0; i < PLAYER_SLOTS; i++) make(els.playerPhotos, 'player', i, 'swap3.playerPhoto');
     make(els.shirtPhoto, 'shirt', 0, 'swap3.shirtPhoto');
+    make(els.shirtPhoto2, 'shirt', 1, 'swap3.shirtPhoto');
   }
 
-  const getRef = (slot) => (slot.kind === 'shirt' ? state.shirt : state.photos[slot.index]);
+  const getRef = (slot) => (slot.kind === 'shirt' ? state.shirts : state.photos)[slot.index];
   function setRef(slot, canvas) {
-    if (slot.kind === 'shirt') state.shirt = canvas;
-    else state.photos[slot.index] = canvas;
+    (slot.kind === 'shirt' ? state.shirts : state.photos)[slot.index] = canvas;
     refreshPrompt();
     refreshUI();
   }
@@ -361,6 +381,15 @@
     } catch {
       toast(t('toast.unreadable'));
     }
+  }
+
+  // Un ou deux maillots : le 2e (club et photo) apparaît à droite du 1er, qui devient la moitié gauche
+  function applySplit() {
+    els.splitShirt.checked = state.split;
+    els.shirt2Col.hidden = !state.split;
+    els.shirtPair.classList.toggle('is-split', state.split);
+    els.clubLabel.dataset.i18n = state.split ? 'swap3.clubLeft' : 'swap3.clubName';
+    els.clubLabel.textContent = t(els.clubLabel.dataset.i18n);
   }
 
   // Modèles et qualités : les modèles 2.5 acceptent aussi « xhigh » et « max »
@@ -450,15 +479,21 @@
     const prompt = els.promptInput.value.trim();
     if (!key) { toast(t('swap3.needKey')); els.apiKey.focus(); return; }
     if (!photos.length) { toast(t('swap3.needPlayer')); return; }
-    if (!state.shirt) { toast(t('swap3.needShirt')); return; }
+    if (!state.shirts[0]) { toast(t('swap3.needShirt')); return; }
+    if (state.split && !state.shirts[1]) { toast(t('swap3.needShirt2')); return; }
     if (!prompt) { toast(t('swap3.needPrompt')); return; }
     const f = currentFormat();
     const body = new FormData();
     body.append('model', state.model);
     body.append('prompt', prompt);
-    // Images 1 à n : le joueur ; dernière image : le maillot (l'ordre est celui annoncé dans le prompt)
+    // Images 1 à n : le joueur ; puis le maillot, ou les deux maillots (gauche, puis droite) : l'ordre est celui
+    // annoncé dans le prompt
     for (const [i, c] of photos.entries()) body.append('image[]', await canvasToBlob(c, 'image/jpeg', 0.92), `joueur-${i + 1}.jpg`);
-    body.append('image[]', await canvasToBlob(state.shirt, 'image/jpeg', 0.92), 'maillot.jpg');
+    if (state.split) {
+      for (const [i, c] of state.shirts.entries()) body.append('image[]', await canvasToBlob(c, 'image/jpeg', 0.92), `maillot-${i + 1}.jpg`);
+    } else {
+      body.append('image[]', await canvasToBlob(state.shirts[0], 'image/jpeg', 0.92), 'maillot.jpg');
+    }
     body.append('size', sizeFor(state.model, f));
     body.append('quality', state.quality);
     body.append('n', String(state.count));
@@ -611,6 +646,7 @@
       S3.filePrefix,
       slugify(state.playerName),
       slugify(state.clubName),
+      state.split && slugify(state.clubName2),
       state.site && state.site.id,
       r.format.id,
     ].filter(Boolean).join('-');
@@ -666,6 +702,20 @@
     els.clubName.addEventListener('input', () => {
       state.clubName = els.clubName.value;
       prefs.set('swap3:club', state.clubName);
+      refreshPrompt();
+    });
+    els.clubName2.value = state.clubName2;
+    els.clubName2.addEventListener('input', () => {
+      state.clubName2 = els.clubName2.value;
+      prefs.set('swap3:club2', state.clubName2);
+      refreshPrompt();
+    });
+    els.splitShirt.addEventListener('change', () => {
+      state.split = els.splitShirt.checked;
+      prefs.set('swap3:split', state.split);
+      applySplit();
+      // Prompt modifié à la main : on ne l'écrase pas, mais il doit parler du bon nombre de maillots
+      if (state.promptEdited) toast(t('swap3.promptKept'), true);
       refreshPrompt();
     });
     els.promptInput.addEventListener('input', () => {
@@ -733,6 +783,7 @@
       prefs.set('lang', lang);
       document.documentElement.lang = lang;
       applyStaticTexts();
+      applySplit();
       populateSites();
       populateGeneration();
       refreshPrompt();
@@ -746,6 +797,7 @@
   buildSlots();
   document.documentElement.lang = lang;
   applyStaticTexts();
+  applySplit();
   bindEvents();
   populateSites();
   populateGeneration();

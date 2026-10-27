@@ -76,10 +76,21 @@
 
       <section class="card">
         <h2><span class="step">3</span><span data-i18n="swap3.shirtTitle">Le maillot</span></h2>
-        <label class="field"><span data-i18n="swap3.clubName">Club</span>
-          <input type="text" id="clubName" spellcheck="false" placeholder="ex. Manchester City" data-i18n-attr="placeholder:swap3.clubPlaceholder">
-        </label>
-        <div class="ref-grid" id="shirtPhoto"></div>
+        <div class="shirt-pair" id="shirtPair">
+          <div>
+            <label class="field"><span id="clubLabel" data-i18n="swap3.clubName">Club</span>
+              <input type="text" id="clubName" spellcheck="false" placeholder="ex. Manchester City" data-i18n-attr="placeholder:swap3.clubPlaceholder">
+            </label>
+            <div class="ref-grid shirt-grid" id="shirtPhoto"></div>
+          </div>
+          <div id="shirt2Col" hidden>
+            <label class="field"><span data-i18n="swap3.clubRight">Club · moitié droite</span>
+              <input type="text" id="clubName2" spellcheck="false" placeholder="ex. Real Madrid" data-i18n-attr="placeholder:swap3.club2Placeholder">
+            </label>
+            <div class="ref-grid shirt-grid" id="shirtPhoto2"></div>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="splitShirt"> <span data-i18n="swap3.split">Ajouter un 2e maillot (1er à gauche, 2e à droite)</span></label>
       </section>
 
       <section class="card">

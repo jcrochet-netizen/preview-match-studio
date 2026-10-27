@@ -699,11 +699,13 @@ output { text-align: right; font-size: 12.5px; color: var(--text); font-variant-
 .field input[type="password"] { color: var(--text); font: inherit; }
 .swap3-empty { cursor: default; }
 .ref-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
-#shirtPhoto { grid-template-columns: minmax(0, 1fr); }
+.shirt-pair { display: grid; gap: 10px; }
+.shirt-pair.is-split { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.shirt-grid { grid-template-columns: minmax(0, 1fr); }
 .ref-slot { position: relative; flex-direction: column; justify-content: center; min-height: 96px; padding: 6px; text-align: center; font-size: 11.5px; }
 .ref-slot.has-photo { border-style: solid; padding: 4px; }
 .ref-slot img { width: 100%; height: 88px; padding: 0; object-fit: cover; }
-#shirtPhoto .ref-slot img { height: 140px; object-fit: contain; }
+.shirt-grid .ref-slot img { height: 140px; object-fit: contain; }
 .ref-clear {
   position: absolute;
   top: 6px;
