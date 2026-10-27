@@ -252,9 +252,10 @@
     mask: null, // zone du maillot (canvas à la taille de la photo, opacité = zone)
     autoBase: null, // zone trouvée par la détection, avant le réglage du bord
     autoMask: null, // zone détectée avec le bord réglé, pour y revenir
-    bgMask: null, // fond de la photo selon le modèle (opacité = fond)
+    personMask: null, // silhouette du joueur (opacité = joueur), contour exact
+    blockMask: null, // short, cheveux… où la zone ne s'étend jamais (opacité = bloqué)
     detectBox: null, // cadre de la zone détectée (px de la photo)
-    grow: prefs.get('swap:grow', 2), // bord de la zone, en % de la largeur du maillot (+ vers le cou et les bras)
+    grow: prefs.get('swap:grow', 4), // bord de la zone, en % de la largeur du maillot (+ : col, nuque, flancs)
     shape: null, // { box, cx, cy, bw, bh, top, bottom } : cadre de travail et mesures de la zone
     // Déchirure : ligne automatique (milieu du col → milieu du bas du maillot), décalée et inclinée par
     // l'utilisateur (en % de la largeur du maillot) ; top et bottom = position obtenue, en px de la photo
@@ -1415,7 +1416,8 @@
     state.mask = makeCanvas(state.photo.w, state.photo.h);
     state.autoMask = null;
     state.autoBase = null;
-    state.bgMask = null;
+    state.personMask = null;
+    state.blockMask = null;
     state.detectBox = null;
     state.shape = null;
     state.frames = {};
@@ -1496,9 +1498,14 @@
         }
       }
       if (found) {
+        // 3e étape : silhouette exacte du joueur sur le même recadrage (contour net, sans le fond)
+        setBusy(t('swap.silhouette'));
+        const person = await personMatte(used.rect);
+        if (token !== detectToken) return;
         state.autoBase = found.canvas;
         state.detectBox = found.box;
-        state.bgMask = backgroundMask(used.bg, used.rect);
+        state.personMask = person;
+        state.blockMask = labelMask(used.blocks, used.rect);
       }
       const mask = found && adjustZone();
       state.detect.busy = false;
@@ -1539,34 +1546,92 @@
     return {
       rect,
       hits: out.filter((o) => SW.shirtLabels.includes(o.label)).map((o) => ({ label: o.label, mask: o.mask })),
-      bg: (out.find((o) => o.label === 'Background') || {}).mask || null,
+      blocks: out.filter((o) => SW.blockLabels.includes(o.label)).map((o) => o.mask),
       faceX: fx == null ? null : rect.x + (fx * rect.w) / c.width,
     };
   }
 
-  // Fond d'après le modèle (opacité = fond), à la taille de la photo ; hors du recadrage, tout est fond
-  function backgroundMask(raw, rect) {
+  // Réunion de zones du modèle (opacité = zone), à la taille de la photo ; vide hors du recadrage
+  function labelMask(raws, rect) {
     const p = state.photo;
     const c = makeCanvas(p.w, p.h);
-    const x = c.getContext('2d');
-    x.fillStyle = '#fff';
-    x.fillRect(0, 0, p.w, p.h);
-    if (!raw) return c;
-    const small = makeCanvas(raw.width, raw.height);
+    if (!raws.length) return c;
+    const w = raws[0].width;
+    const h = raws[0].height;
+    const small = makeCanvas(w, h);
     const sx = small.getContext('2d');
-    const img = sx.createImageData(raw.width, raw.height);
-    const ch = raw.channels || 1;
-    for (let i = 0; i < raw.width * raw.height; i++) img.data.set([255, 255, 255, raw.data[i * ch] > 127 ? 255 : 0], i * 4);
+    const img = sx.createImageData(w, h);
+    raws.forEach((raw) => {
+      const ch = raw.channels || 1;
+      for (let i = 0; i < w * h; i++) if (raw.data[i * ch] > 127) img.data.set([255, 255, 255, 255], i * 4);
+    });
     sx.putImageData(img, 0, 0);
-    x.clearRect(rect.x, rect.y, rect.w, rect.h);
+    const x = c.getContext('2d');
     x.imageSmoothingEnabled = true;
     x.drawImage(small, rect.x, rect.y, rect.w, rect.h);
     return c;
   }
 
-  // Zone détectée avec le bord réglé : élargie de quelques px vers le cou et les bras (le col et le bas des
-  // manches, fines bandes que le modèle rattache au cou ou au bras), jamais dans le fond (espace entre le
-  // bras et le maillot) ; rétrécie si le réglage est négatif
+  // Silhouette du joueur sur la partie « rect » de la photo (IMG.LY Background Removal, dans le navigateur) :
+  // canvas à la taille de la photo, opacité = joueur (bord adouci, intérieur bien opaque)
+  let personEngine = null;
+  async function personMatte(rect) {
+    if (!personEngine) personEngine = import(SW.personEngineUrl).catch((err) => { personEngine = null; throw err; });
+    const mod = await personEngine;
+    const removeBackground = mod.removeBackground || mod.default;
+    const k = Math.min(1, DETECT_MAX / Math.max(rect.w, rect.h));
+    const c = makeCanvas(rect.w * k, rect.h * k);
+    c.getContext('2d').drawImage(state.photo.canvas, rect.x, rect.y, rect.w, rect.h, 0, 0, c.width, c.height);
+    const input = await canvasToBlob(c, 'image/png');
+    const downloads = new Map();
+    const config = {
+      model: SW.personModels[els.engineSelect.value] || SW.personModels.standard,
+      output: { format: 'image/png', quality: 1 },
+      progress: (key, current, total) => {
+        if (!key.startsWith('fetch')) return;
+        downloads.set(key, [current, total]);
+        let done = 0;
+        let all = 0;
+        downloads.forEach(([d, a]) => { done += d; all += a; });
+        if (all) setBusy(t('swap.loadingModel', { p: `${Math.round((done / all) * 100)} %` }), done / all);
+      },
+    };
+    let blob = null;
+    if ('gpu' in navigator) {
+      try { blob = await removeBackground(input, { ...config, device: 'gpu' }); } catch { blob = null; }
+    }
+    if (!blob) blob = await removeBackground(input, { ...config, device: 'cpu' });
+    setBusy(t('swap.silhouette'));
+    const url = URL.createObjectURL(blob);
+    let cut;
+    try { cut = await loadImage(url); } finally { URL.revokeObjectURL(url); }
+    const p = state.photo;
+    const out = makeCanvas(p.w, p.h);
+    const ox = readCtx(out);
+    ox.imageSmoothingEnabled = true;
+    ox.imageSmoothingQuality = 'high';
+    ox.drawImage(cut, rect.x, rect.y, rect.w, rect.h);
+    // Intérieur rendu opaque (le modèle laisse parfois des zones semi-transparentes), bord gardé doux
+    const img = ox.getImageData(rect.x, rect.y, rect.w, rect.h);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      d[i] = 255;
+      d[i + 1] = 255;
+      d[i + 2] = 255;
+      d[i + 3] = clamp(((d[i + 3] - 40) * 255) / 150, 0, 255);
+    }
+    ox.putImageData(img, rect.x, rect.y);
+    return out;
+  }
+
+  // Peau (cou, bras) d'après la couleur : rouge > vert > bleu, dans les proportions de la peau ; un liseré
+  // de col vert, une bande blanche ou un liseré violet ne le sont pas
+  const isSkin = (r, g, b) => r > 30 && r > g && g >= b * 0.85 && r - b > r * 0.12 && g > r * 0.42 && g < r * 0.95;
+
+  // Zone détectée avec le bord réglé. Élargie de quelques px là où le modèle de vêtements s'arrête trop tôt
+  // (bande du col, haut du col dans la nuque, bas des manches, flancs dans l'ombre), mais seulement dans la
+  // silhouette du joueur, jamais sur la peau ni sur le short ou les cheveux ; rétrécie si le réglage est
+  // négatif. Le contour extérieur suit ensuite la silhouette exacte du joueur (net, jamais de fond).
   function adjustZone() {
     const p = state.photo;
     const out = makeCanvas(p.w, p.h);
@@ -1574,7 +1639,6 @@
     ox.drawImage(state.autoBase, 0, 0);
     const b = state.detectBox;
     const g = (state.grow / 100) * b.w;
-    if (Math.abs(g) < 0.5) return out;
     const m = Math.ceil(Math.abs(g)) + 6;
     const bx = Math.max(0, Math.floor(b.x - m));
     const by = Math.max(0, Math.floor(b.y - m));
@@ -1582,27 +1646,36 @@
     const h = Math.min(p.h, Math.ceil(b.y + b.h + m)) - by;
     const img = ox.getImageData(bx, by, w, h);
     const d = img.data;
+    const person = readCtx(state.personMask).getImageData(bx, by, w, h).data;
     if (g > 0) {
-      const bg = readCtx(state.bgMask).getImageData(bx, by, w, h).data;
+      const block = readCtx(state.blockMask).getImageData(bx, by, w, h).data;
+      const px = readCtx(state.photo.canvas).getImageData(bx, by, w, h).data;
       // Distance de chaque pixel hors zone à la zone (transformée de distance sur l'inverse)
       const inv = new Uint8ClampedArray(w * h * 4);
       for (let i = 0; i < w * h; i++) inv[i * 4 + 3] = d[i * 4 + 3] < 128 ? 255 : 0;
       const dist = edgeDistance(inv, w, h);
       for (let i = 0; i < w * h; i++) {
-        if (bg[i * 4 + 3] >= 128) continue;
+        const q = i * 4;
+        if (dist[i] > g + 1 || person[q + 3] < 128 || block[q + 3] >= 128 || isSkin(px[q], px[q + 1], px[q + 2])) continue;
         const a = clamp(g + 0.5 - dist[i], 0, 1) * 255;
-        if (a > d[i * 4 + 3]) d[i * 4 + 3] = a;
+        if (a > d[q + 3]) d[q + 3] = a;
       }
     } else {
       const dist = edgeDistance(d, w, h);
       for (let i = 0; i < w * h; i++) d[i * 4 + 3] = Math.round(d[i * 4 + 3] * clamp((dist[i] + g + 0.5) / 1.5, 0, 1));
     }
+    // Bord adouci d'un pixel (la limite avec la peau suit la couleur, pixel par pixel), puis contour extérieur
+    // = silhouette exacte du joueur. Pas de filtre guidé ici : il confondrait un liseré sombre avec la peau.
+    const alpha = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) alpha[i] = d[i * 4 + 3];
+    const soft = blur(alpha, w, h, 1, 1);
+    for (let i = 0; i < w * h; i++) d[i * 4 + 3] = Math.round((soft[i] * person[i * 4 + 3]) / 255);
     ox.putImageData(img, bx, by);
     return out;
   }
 
   function setGrow(v) {
-    state.grow = clamp(v, -1.5, 4);
+    state.grow = clamp(v, -1.5, 6);
     prefs.set('swap:grow', state.grow);
     if (state.autoBase) {
       state.autoMask = adjustZone();

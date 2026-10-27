@@ -230,6 +230,11 @@ window.APP_CONFIG.swapShirt = {
   engineUrl: 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1',
   model: 'Xenova/segformer_b2_clothes',
   shirtLabels: ['Upper-clothes', 'Dress'],
+  // Zones où la zone du maillot ne s'étend jamais quand on élargit son bord
+  blockLabels: ['Pants', 'Skirt', 'Belt', 'Hair', 'Hat', 'Sunglasses', 'Left-shoe', 'Right-shoe', 'Bag'],
+  // Silhouette exacte du joueur (contour net, fond jamais pris) : IMG.LY Background Removal, comme les pages joueur
+  personEngineUrl: 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm',
+  personModels: { standard: 'isnet_fp16', high: 'isnet' },
   // Formats d'export : taille de la photo, ou cadrage à largeur fixe
   formats: [
     { id: 'original' },

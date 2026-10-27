@@ -121,14 +121,18 @@ des noms sont enregistrés à part du Top 10 Ballon d'Or. Réglages : `ballondor
 Visuel de transfert : le maillot du joueur est coupé en deux par une déchirure de papier ; chaque moitié
 garde le maillot de la photo ou reçoit l'image d'un autre maillot (futur club, autre tenue).
 
-1. **Photo du joueur** : glissez-la sur l'image ou dans la carte. Le maillot est détecté automatiquement
-   par une IA qui tourne dans le navigateur (Transformers.js 3.8.1, modèle `Xenova/segformer_b2_clothes`,
-   zones « Upper-clothes » et « Dress », celle-ci limitée au bas du maillot pour ne pas prendre le short) ;
-   le modèle (≈ 30 Mo, ou ≈ 110 Mo en haute précision) se télécharge au premier usage puis reste en cache.
-   Deux passages : la photo entière pour situer le maillot, puis un recadrage sur le joueur pour des bords
-   précis (espace entre le bras et le maillot). Les petits trous de la zone (écusson, logo) sont comblés.
-   « Bord de la zone » (2 % de la largeur du maillot par défaut) l'élargit vers le cou et les bras pour
-   couvrir le col et le bas des manches, jamais dans le fond. Aucune photo n'est envoyée à un serveur.
+1. **Photo du joueur** : glissez-la sur l'image ou dans la carte. Le maillot est détecté automatiquement,
+   dans le navigateur (aucune photo n'est envoyée à un serveur), en trois étapes :
+   - un modèle de vêtements (Transformers.js 3.8.1, `Xenova/segformer_b2_clothes`) sur la photo entière
+     pour situer le maillot, puis sur un recadrage du joueur pour des bords précis (zones « Upper-clothes »
+     et « Dress », celle-ci limitée au bas du maillot pour ne pas prendre le short) ;
+   - la silhouette exacte du joueur (IMG.LY Background Removal, comme les pages joueur) : le contour du
+     maillot côté fond est net et l'espace entre le bras et le torse reste libre ;
+   - « Bord de la zone » (4 % de la largeur du maillot par défaut) étend la zone là où le modèle s'arrête
+     trop tôt (bande du col, nuque, bas des manches), seulement dans la silhouette, jamais sur la peau
+     (reconnue à sa couleur) ni sur le short ou les cheveux. Les petits trous (écusson, logo) sont comblés.
+   Modèles téléchargés au premier usage puis gardés en cache : ≈ 110 Mo en standard, ≈ 280 Mo en haute
+   précision.
 2. **Zone et déchirure** : le bord de la zone détectée est recalé sur les contours de la photo (filtre
    guidé), pour un col et des manches nets. Outils « Zone + » / « Zone − » (pinceau) pour la corriger.
    La déchirure part du milieu du col (entre les épaules, et le visage s'il est trouvé) jusqu'au milieu du
