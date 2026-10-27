@@ -266,4 +266,5 @@ window.APP_CONFIG.swapShirt3 = {
   uploadMax: 1536, // photos envoyées réduites à ce côté maximal (px)
   logo: { w: 0.12, h: 0.045, margin: 0.025 }, // logo du site, en part de la largeur de l'image
   filePrefix: 'swap-shirt-3',
+  memoryDb: 'mps-swap3', // base IndexedDB du navigateur : joueurs et maillots mémorisés, avec leurs photos
 };

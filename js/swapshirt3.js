@@ -1,7 +1,7 @@
 /* Preview Match Studio — page « Swap shirt 3 » : montage généré par l'IA d'OpenAI (API Images, modification à
    partir de photos). Photos de référence du joueur + photo du maillot (ou de deux maillots, un par moitié) + prompt
    → une ou plusieurs propositions, puis cadrage au format choisi, logo du site et téléchargement. La clé API est
-   collée dans la page. */
+   collée dans la page. Joueurs et maillots déjà utilisés sont mémorisés dans le navigateur (IndexedDB). */
 (() => {
   'use strict';
 
@@ -209,6 +209,143 @@
   };
   const ctx = els.canvas.getContext('2d');
   const slots = []; // cases photo : { root, img, text, kind, index }
+
+  // Fiches mémorisables : le joueur (jusqu'à 3 photos) et les deux maillots (une photo chacun). « linked » : id de
+  // la fiche mémorisée affichée ('' : nouvelle fiche, pas encore mémorisée)
+  const picks = [
+    { kind: 'players', field: 'playerName', pref: 'swap3:player', newKey: 'swap3.newPlayer', select: $('#playerPick'), save: $('#playerSaveBtn'), forget: $('#playerForgetBtn') },
+    { kind: 'shirts', index: 0, field: 'clubName', pref: 'swap3:club', newKey: 'swap3.newShirt', select: $('#shirtPick'), save: $('#shirtSaveBtn'), forget: $('#shirtForgetBtn') },
+    { kind: 'shirts', index: 1, field: 'clubName2', pref: 'swap3:club2', newKey: 'swap3.newShirt', select: $('#shirtPick2'), save: $('#shirt2SaveBtn'), forget: $('#shirt2ForgetBtn') },
+  ].map((pk) => ({ ...pk, linked: '', token: 0 }));
+  const memory = { db: null, players: new Map(), shirts: new Map() };
+
+  function setName(pk, value) {
+    state[pk.field] = value;
+    if (els[pk.field].value !== value) els[pk.field].value = value;
+    prefs.set(pk.pref, value);
+  }
+
+  // ---------- Mémoire (joueurs et maillots, dans ce navigateur) ----------
+  // Une fiche = { id, name, photos: [Blob], updated }. L'id est le nom simplifié : « Erling Haaland » et
+  // « erling haaland » sont la même fiche. Rien ne part ailleurs : les photos ne sont envoyées qu'à OpenAI, avec
+  // chaque génération (le modèle ne retient rien d'une fois sur l'autre).
+  const idb = (req) => new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+
+  function memoryWrite(kind, op) {
+    return new Promise((resolve, reject) => {
+      const tx = memory.db.transaction(kind, 'readwrite');
+      op(tx.objectStore(kind));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  }
+
+  async function openMemory() {
+    try {
+      const req = indexedDB.open(S3.memoryDb, 1);
+      req.onupgradeneeded = () => ['players', 'shirts'].forEach((kind) => req.result.createObjectStore(kind, { keyPath: 'id' }));
+      memory.db = await idb(req);
+      for (const kind of ['players', 'shirts']) {
+        const all = await idb(memory.db.transaction(kind).objectStore(kind).getAll());
+        all.forEach((r) => memory[kind].set(r.id, r));
+      }
+    } catch {
+      memory.db = null; // navigation privée, stockage bloqué… : la page marche sans mémoire
+    }
+    populatePickers();
+    // Noms gardés de la dernière visite : si la fiche est mémorisée, ses photos reviennent aussi
+    picks.forEach((pk) => {
+      const id = slugify(state[pk.field] || '');
+      if (memory[pk.kind].has(id)) recall(pk, id);
+    });
+  }
+
+  function populatePickers() {
+    picks.forEach((pk) => {
+      const saved = [...memory[pk.kind].values()].sort((a, b) => a.name.localeCompare(b.name, lang));
+      if (!memory[pk.kind].has(pk.linked)) pk.linked = '';
+      const options = [new Option(t(pk.newKey), '')];
+      if (saved.length) {
+        const group = document.createElement('optgroup');
+        group.label = t('swap3.savedGroup', { n: saved.length });
+        group.append(...saved.map((r) => new Option(r.name, r.id)));
+        options.push(group);
+      }
+      pk.select.replaceChildren(...options);
+      pk.select.value = pk.linked;
+      pk.select.disabled = !memory.db;
+      pk.save.disabled = !memory.db;
+      pk.forget.disabled = !pk.linked;
+    });
+  }
+
+  const pickPhotos = (pk) => (pk.kind === 'players' ? state.photos : [state.shirts[pk.index]]).filter(Boolean);
+
+  // Fiche choisie dans le menu (ou « Nouveau… » : fiche vide) → nom et photos
+  async function recall(pk, id) {
+    const token = ++pk.token;
+    const r = memory[pk.kind].get(id) || null;
+    let canvases = [];
+    try {
+      if (r) canvases = await Promise.all(r.photos.map((b) => fileToCanvas(b, S3.uploadMax)));
+    } catch {
+      toast(t('toast.unreadable'));
+      pk.select.value = pk.linked;
+      return;
+    }
+    if (token !== pk.token) return;
+    pk.linked = r ? r.id : '';
+    setName(pk, r ? r.name : '');
+    if (pk.kind === 'players') state.photos.forEach((_, k) => { state.photos[k] = canvases[k] || null; });
+    else state.shirts[pk.index] = canvases[0] || null;
+    populatePickers();
+    refreshPrompt();
+    refreshUI();
+  }
+
+  // Mémorise la fiche affichée (remplace celle du même nom). « silent » : à la génération, sans message
+  async function remember(pk, silent) {
+    const name = state[pk.field].trim();
+    const id = slugify(name);
+    const photos = pickPhotos(pk);
+    let problem = '';
+    if (!memory.db) problem = 'swap3.memoryOff';
+    else if (!id || !photos.length) problem = pk.kind === 'players' ? 'swap3.needPlayerToSave' : 'swap3.needShirtToSave';
+    if (problem) {
+      if (!silent) toast(t(problem));
+      return;
+    }
+    try {
+      const record = { id, name, photos: await Promise.all(photos.map((c) => canvasToBlob(c, 'image/jpeg', 0.92))), updated: Date.now() };
+      const existed = memory[pk.kind].has(id);
+      await memoryWrite(pk.kind, (store) => store.put(record));
+      memory[pk.kind].set(id, record);
+      pk.linked = id;
+      populatePickers();
+      if (!silent) toast(t(existed ? 'swap3.memoryUpdated' : 'swap3.memorySaved', { name }));
+    } catch {
+      if (!silent) toast(t('swap3.memoryFailed'));
+    }
+  }
+
+  // Oublie la fiche affichée ; le nom et les photos restent dans la page
+  async function forget(pk) {
+    const r = memory[pk.kind].get(pk.linked);
+    if (!r || !window.confirm(t('swap3.forgetConfirm', { name: r.name }))) return;
+    try {
+      await memoryWrite(pk.kind, (store) => store.delete(r.id));
+    } catch {
+      toast(t('swap3.memoryFailed'));
+      return;
+    }
+    memory[pk.kind].delete(r.id);
+    populatePickers();
+    toast(t('swap3.memoryForgotten', { name: r.name }));
+  }
 
   // ---------- Prompt ----------
   // Prompt type, rempli avec le nom du joueur, du ou des clubs et le nombre de photos de référence (envoyées avant
@@ -491,6 +628,8 @@
     if (!state.shirts[0]) { toast(t('swap3.needShirt')); return; }
     if (state.split && !state.shirts[1]) { toast(t('swap3.needShirt2')); return; }
     if (!prompt) { toast(t('swap3.needPrompt')); return; }
+    // Joueur et maillot(s) mémorisés pour la prochaine fois, sans attendre
+    picks.forEach((pk) => { if (pk.index !== 1 || state.split) remember(pk, true); });
     const f = currentFormat();
     const body = new FormData();
     body.append('model', state.model);
@@ -701,23 +840,20 @@
       saveKey();
     });
 
-    els.playerName.value = state.playerName;
-    els.clubName.value = state.clubName;
-    els.playerName.addEventListener('input', () => {
-      state.playerName = els.playerName.value;
-      prefs.set('swap3:player', state.playerName);
-      refreshPrompt();
-    });
-    els.clubName.addEventListener('input', () => {
-      state.clubName = els.clubName.value;
-      prefs.set('swap3:club', state.clubName);
-      refreshPrompt();
-    });
-    els.clubName2.value = state.clubName2;
-    els.clubName2.addEventListener('input', () => {
-      state.clubName2 = els.clubName2.value;
-      prefs.set('swap3:club2', state.clubName2);
-      refreshPrompt();
+    picks.forEach((pk) => {
+      els[pk.field].value = state[pk.field];
+      els[pk.field].addEventListener('input', () => {
+        setName(pk, els[pk.field].value);
+        // Nom changé : ce n'est plus la fiche mémorisée (elle le sera sous ce nouveau nom)
+        if (pk.linked && slugify(state[pk.field]) !== pk.linked) {
+          pk.linked = '';
+          populatePickers();
+        }
+        refreshPrompt();
+      });
+      pk.select.addEventListener('change', () => recall(pk, pk.select.value));
+      pk.save.addEventListener('click', () => remember(pk, false));
+      pk.forget.addEventListener('click', () => forget(pk));
     });
     els.splitShirt.addEventListener('change', () => {
       state.split = els.splitShirt.checked;
@@ -799,6 +935,7 @@
       document.documentElement.lang = lang;
       applyStaticTexts();
       applySplit();
+      populatePickers();
       populateSites();
       populateGeneration();
       refreshPrompt();
@@ -820,7 +957,8 @@
   layoutStage();
   refreshUI();
   selectSite(prefs.get('swap3:site', ''));
+  openMemory();
 
   // Exposé pour le débogage dans la console.
-  window.Swap3Studio = { state, generate, paint, selectResult };
+  window.Swap3Studio = { state, generate, paint, selectResult, memory, picks };
 })();

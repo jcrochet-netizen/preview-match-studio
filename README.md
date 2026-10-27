@@ -172,6 +172,15 @@ Montage entièrement généré par l'IA d'OpenAI (API Images, `POST /v1/images/e
 nom du joueur et du club (« Montage photo réaliste : Kylian Mbappé porte le maillot de Manchester City… ») tant
 qu'on ne le modifie pas ; « Revenir au prompt type » le régénère.
 
+**Joueurs et maillots mémorisés** : le modèle ne retient rien d'une génération à l'autre, donc c'est la page qui
+garde les fiches. À chaque génération (ou avec « Mémoriser »), le joueur (nom + jusqu'à 3 photos) et chaque
+maillot (club + photo) sont enregistrés. Les menus « Joueurs mémorisés » et « Maillots mémorisés » (un par
+moitié en mode deux maillots) les rechargent ensuite, prêts à être renvoyés à OpenAI ; « + Nouveau… » repart
+d'une fiche vide et « Oublier » supprime la fiche. Une fiche du même nom (sans tenir compte des majuscules ni des
+accents) est remplacée. Au retour sur la page, les dernières fiches utilisées reviennent avec leurs photos.
+Stockage : base IndexedDB `mps-swap3` (`memoryDb` dans `swapShirt3`) de ce navigateur seulement. Rien n'est
+publié ni partagé avec les collègues, et vider les données du navigateur efface la liste.
+
 **Deux maillots** : la case « Ajouter un 2e maillot » ajoute un 2e club et une 2e photo de maillot. Le 1er maillot
 habille la moitié gauche de l'image, le 2e la moitié droite (séparation verticale au centre du torse, chaque
 manche avec sa moitié). « Séparation entre les maillots » : « Déchirée » (par défaut) demande une bande effet
