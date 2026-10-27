@@ -11,7 +11,8 @@
   const EXT = { 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/png': '.png' };
   const QUALITY = 0.92;
   const WORK_MAX = 2400; // photo plus grande réduite (côté le plus long) : export « taille actuelle » à cette taille
-  const DETECT_MAX = 1024; // image envoyée au modèle de détection
+  const DETECT_MAX = 1024; // image envoyée au modèle de détection (2e passage, recadré sur le maillot)
+  const LOCATE_MAX = 512; // 1er passage, qui ne sert qu'à situer le maillot
   const SHADE_MAX = 640; // résolution des cartes de lumière et de plis
   const SHIRT_MAX = 1400; // image de maillot importée, réduite au besoin
   const GRID = 8; // subdivisions du maillage de déformation (par côté)
@@ -1414,17 +1415,30 @@
       setBusy(t('swap.analyzing'));
       await new Promise((r) => setTimeout(r, 30));
       const p = state.photo;
-      const k = Math.min(1, DETECT_MAX / Math.max(p.w, p.h));
-      const small = makeCanvas(p.w * k, p.h * k);
-      small.getContext('2d').drawImage(p.canvas, 0, 0, small.width, small.height);
-      const image = await engine.RawImage.fromBlob(await canvasToBlob(small, 'image/png'));
-      const out = await pipe(image);
+      // 1er passage : photo entière, pour trouver le maillot (et le visage)
+      const full = { x: 0, y: 0, w: p.w, h: p.h };
+      const first = await segment(pipe, full, LOCATE_MAX);
       if (token !== detectToken) return;
-      const face = out.find((o) => o.label === 'Face');
-      const fx = face ? maskCenterX(face.mask) : null;
-      state.faceX = fx == null ? null : fx / k;
-      const hits = out.filter((o) => SW.shirtLabels.includes(o.label)).map((o) => o.mask);
-      const mask = hits.length ? maskFromSegmentation(hits) : null;
+      state.faceX = first.faceX;
+      let found = first.hits.length ? maskFromSegmentation(first.hits, full) : null;
+      // 2e passage recadré sur le maillot (large marge) : le modèle, qui travaille en 512 px, voit le torse
+      // bien plus grand, d'où des bords précis (espace entre le bras et le maillot, bas du maillot)
+      if (found) {
+        const b = found.box;
+        const mx = b.w * 0.35;
+        const my = b.h * 0.25;
+        const x0 = Math.max(0, Math.floor(b.x - mx));
+        const y0 = Math.max(0, Math.floor(b.y - my));
+        const rect = { x: x0, y: y0, w: Math.min(p.w, Math.ceil(b.x + b.w + mx)) - x0, h: Math.min(p.h, Math.ceil(b.y + b.h + my)) - y0 };
+        if (rect.w * rect.h < p.w * p.h * 0.6) {
+          setBusy(t('swap.refining'));
+          const second = await segment(pipe, rect, DETECT_MAX);
+          if (token !== detectToken) return;
+          const refined = second.hits.length ? maskFromSegmentation(second.hits, rect) : null;
+          if (refined) found = refined;
+        }
+      }
+      const mask = found && found.canvas;
       state.detect.busy = false;
       if (!mask) {
         state.autoMask = null;
@@ -1451,6 +1465,21 @@
     paint();
   }
 
+  // Un passage du modèle sur une partie de la photo (rect, en px de la photo) : zones du maillot et centre
+  // du visage (px de la photo)
+  async function segment(pipe, rect, max) {
+    const k = Math.min(1, max / Math.max(rect.w, rect.h));
+    const c = makeCanvas(rect.w * k, rect.h * k);
+    c.getContext('2d').drawImage(state.photo.canvas, rect.x, rect.y, rect.w, rect.h, 0, 0, c.width, c.height);
+    const out = await pipe(await engine.RawImage.fromBlob(await canvasToBlob(c, 'image/png')));
+    const face = out.find((o) => o.label === 'Face');
+    const fx = face ? maskCenterX(face.mask) : null;
+    return {
+      hits: out.filter((o) => SW.shirtLabels.includes(o.label)).map((o) => ({ label: o.label, mask: o.mask })),
+      faceX: fx == null ? null : rect.x + (fx * rect.w) / c.width,
+    };
+  }
+
   // Centre horizontal d'une zone du modèle (null si vide)
   function maskCenterX(raw) {
     const ch = raw.channels || 1;
@@ -1466,13 +1495,28 @@
 
   // Masque du maillot : zones du modèle retenues (SW.shirtLabels) réunies, réduites à la plus grande zone
   // d'un seul tenant (écarte les maillots du public), agrandies à la taille de la photo, bord net mais adouci
-  function maskFromSegmentation(masks) {
-    const w = masks[0].width;
-    const h = masks[0].height;
+  // masks couvrent la partie « rect » de la photo ; renvoie { canvas (taille de la photo), box (cadre de la zone) }
+  function maskFromSegmentation(hits, rect) {
+    const w = hits[0].mask.width;
+    const h = hits[0].mask.height;
     const on = new Uint8Array(w * h);
-    masks.forEach((raw) => {
-      const ch = raw.channels || 1;
-      for (let i = 0; i < w * h; i++) if (raw.data[i * ch] > 127) on[i] = 1;
+    const isOn = (raw, i) => raw.data[i * (raw.channels || 1)] > 127;
+    // « Dress » n'est gardé qu'au-dessus du bas du haut (« Upper-clothes ») : un maillot long, oui ;
+    // le short blanc sous un maillot blanc (pris avec lui pour une robe), non
+    const top = hits.find((o) => o.label === 'Upper-clothes');
+    let bottomRow = h - 1;
+    if (top) {
+      bottomRow = -1;
+      for (let y = 0; y < h; y++) {
+        let count = 0;
+        for (let x = 0; x < w; x++) if (isOn(top.mask, y * w + x)) count++;
+        if (count >= Math.max(3, w * 0.01)) bottomRow = y;
+      }
+      if (bottomRow < 0) bottomRow = h - 1;
+    }
+    hits.forEach(({ label: name, mask: raw }) => {
+      const limit = name === 'Upper-clothes' ? w * h : (bottomRow + 1) * w;
+      for (let i = 0; i < limit; i++) if (isOn(raw, i)) on[i] = 1;
     });
     const label = new Int32Array(w * h).fill(-1);
     const sizes = [];
@@ -1522,17 +1566,18 @@
     const ox = readCtx(out);
     ox.imageSmoothingEnabled = true;
     ox.imageSmoothingQuality = 'high';
-    ox.drawImage(small, 0, 0, p.w, p.h);
+    ox.drawImage(small, rect.x, rect.y, rect.w, rect.h);
     // Bord affiné sur les contours de la photo, dans le cadre de la zone (avec une marge)
-    const kx = p.w / w;
-    const ky = p.h / h;
-    const mx = (maxX - minX + 1) * kx * 0.08;
-    const x0 = Math.max(0, Math.floor(minX * kx - mx));
-    const y0 = Math.max(0, Math.floor(minY * ky - mx));
-    const x1 = Math.min(p.w, Math.ceil((maxX + 1) * kx + mx));
-    const y1 = Math.min(p.h, Math.ceil((maxY + 1) * ky + mx));
+    const kx = rect.w / w;
+    const ky = rect.h / h;
+    const box = { x: rect.x + minX * kx, y: rect.y + minY * ky, w: (maxX - minX + 1) * kx, h: (maxY - minY + 1) * ky };
+    const mx = box.w * 0.08;
+    const x0 = Math.max(0, Math.floor(box.x - mx));
+    const y0 = Math.max(0, Math.floor(box.y - mx));
+    const x1 = Math.min(p.w, Math.ceil(box.x + box.w + mx));
+    const y1 = Math.min(p.h, Math.ceil(box.y + box.h + mx));
     refineEdges(out, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
-    return out;
+    return { canvas: out, box };
   }
 
   // Filtre guidé (He et al.) : le bord de la zone, venu du modèle à basse résolution, se cale sur les vrais

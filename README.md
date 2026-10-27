@@ -123,8 +123,10 @@ garde le maillot de la photo ou reçoit l'image d'un autre maillot (futur club, 
 
 1. **Photo du joueur** : glissez-la sur l'image ou dans la carte. Le maillot est détecté automatiquement
    par une IA qui tourne dans le navigateur (Transformers.js 3.8.1, modèle `Xenova/segformer_b2_clothes`,
-   zones « Upper-clothes » et « Dress ») ; le modèle (≈ 30 Mo, ou ≈ 110 Mo en haute précision) se
-   télécharge au premier usage puis reste en cache. Aucune photo n'est envoyée à un serveur.
+   zones « Upper-clothes » et « Dress », celle-ci limitée au bas du maillot pour ne pas prendre le short) ;
+   le modèle (≈ 30 Mo, ou ≈ 110 Mo en haute précision) se télécharge au premier usage puis reste en cache.
+   Deux passages : la photo entière pour situer le maillot, puis un recadrage sur le joueur pour des bords
+   précis (espace entre le bras et le maillot). Aucune photo n'est envoyée à un serveur.
 2. **Zone et déchirure** : le bord de la zone détectée est recalé sur les contours de la photo (filtre
    guidé), pour un col et des manches nets. Outils « Zone + » / « Zone − » (pinceau) pour la corriger.
    La déchirure part du milieu du col (entre les épaules, et le visage s'il est trouvé) jusqu'au milieu du
