@@ -165,6 +165,32 @@ prend « Photo de base » ou « Autre photo » (« Inverser les moitiés »), pu
 (déchirure, déplacement, déformation, lumière, logo, formats). Réglages enregistrés à part (préfixe `swap2`).
 Le même fichier `js/swapshirt.js` sert aux deux pages (`data-mode="duo"` sur la page 2).
 
+### Swap shirt 3 (`swapshirt3.html`)
+
+Montage entièrement généré par l'IA d'OpenAI (API Images, `POST /v1/images/edits`) : jusqu'à 3 photos du joueur
+(références pour le visage), une photo du maillot de l'autre club et un prompt. Le prompt type se remplit avec le
+nom du joueur et du club (« Montage photo réaliste : Kylian Mbappé porte le maillot de Manchester City… ») tant
+qu'on ne le modifie pas ; « Revenir au prompt type » le régénère.
+
+- **Clé API** : à créer sur [platform.openai.com/api-keys](https://platform.openai.com/api-keys). Compte API avec
+  crédits, distinct de l'abonnement ChatGPT ; les modèles d'image peuvent demander de vérifier l'organisation. La
+  clé reste dans le navigateur : elle n'est envoyée qu'à OpenAI et n'est gardée (`localStorage`, `mps:swap3:key`)
+  que si « Mémoriser la clé » est coché. Ne jamais la mettre dans le code ni dans le dépôt.
+- **Génération** : modèle (`gpt-image-2`, `gpt-image-2.5-sunburst`, `gpt-image-2.5-flare`, `gpt-image-1.5`),
+  format 16:9 / 3:2 / 9:16 / 1:1, qualité, 1 à 4 propositions. Chaque format demande au modèle une taille proche
+  (ex. 2048 × 1152 pour le 16:9 ; tailles 1536 × 1024 / 1024 × 1536 / 1024 × 1024 pour `gpt-image-1.5`, qui reçoit
+  aussi `input_fidelity: high`), puis l'image est recadrée au format final. Les photos sont réduites à 1536 px.
+- **Erreurs** : les réponses d'erreur de `/v1/images/edits` ne sont pas lisibles depuis la page (pas d'en-tête
+  CORS). La page vérifie donc d'abord la clé et l'accès au modèle avec `GET /v1/models/<modèle>` pour afficher le
+  message d'OpenAI ; si la génération est refusée ensuite (modération, crédits…), un message générique s'affiche.
+- **Résultats** : vignettes des propositions sous l'image ; glisser pour cadrer, molette ou curseur pour zoomer,
+  logo du site en haut à droite, puis « Prévisualiser » et télécharger (JPG, WebP ou PNG). Les images ne sont pas
+  enregistrées : elles disparaissent en quittant la page.
+
+Chaque proposition est facturée par OpenAI sur le compte de la clé, et les photos sont envoyées à OpenAI (photos
+d'agence : vérifier que les droits le permettent). Réglages : `swapShirt3` dans `js/config.js` (adresses de l'API,
+modèles, formats et tailles demandées, taille des photos envoyées, logo).
+
 ## Ajouter un site et son template (pour toute l'équipe)
 
 Chaque site a son propre template : choisir le site dans le menu charge son fond et place son logo.

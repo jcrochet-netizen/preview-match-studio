@@ -246,3 +246,24 @@ window.APP_CONFIG.swapShirt = {
   logo: { w: 0.12, h: 0.045, margin: 0.025 },
   filePrefix: 'swap-shirt',
 };
+
+// Page « Swap shirt 3 » (swapshirt3.html) : montage généré par l'IA d'OpenAI (API Images, modification à partir de
+// photos) avec des photos du joueur, une photo du maillot et un prompt. La clé API est collée dans la page et gardée
+// dans le navigateur ; les photos sont envoyées à OpenAI (logique : js/swapshirt3.js).
+window.APP_CONFIG.swapShirt3 = {
+  endpoint: 'https://api.openai.com/v1/images/edits',
+  modelsEndpoint: 'https://api.openai.com/v1/models', // vérification de la clé et du modèle avant la génération
+  // Modèles proposés (le premier par défaut) ; gpt-image-1 a été arrêté le 23/10/2026
+  models: ['gpt-image-2', 'gpt-image-2.5-sunburst', 'gpt-image-2.5-flare', 'gpt-image-1.5'],
+  // Taille demandée au modèle pour chaque format : tailles libres (multiples de 16) à partir de gpt-image-2 ;
+  // « legacy » pour gpt-image-1.5, qui n'accepte que 1024×1024, 1536×1024 et 1024×1536
+  formats: [
+    { id: '16x9', label: '16:9', width: 1200, height: 675, request: '2048x1152', legacy: '1536x1024' },
+    { id: '3x2', label: '3:2', width: 1200, height: 800, request: '1536x1024', legacy: '1536x1024' },
+    { id: '9x16', label: '9:16', width: 1080, height: 1920, request: '1152x2048', legacy: '1024x1536' },
+    { id: '1x1', label: '1:1', width: 1080, height: 1080, request: '1024x1024', legacy: '1024x1024' },
+  ],
+  uploadMax: 1536, // photos envoyées réduites à ce côté maximal (px)
+  logo: { w: 0.12, h: 0.045, margin: 0.025 }, // logo du site, en part de la largeur de l'image
+  filePrefix: 'swap-shirt-3',
+};

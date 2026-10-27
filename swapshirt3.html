@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Swap shirt 3 — Preview Match Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Swap shirt 3 : montage généré par l'IA d'OpenAI (API Images) à partir de photos du joueur, d'une photo du
+       maillot et d'un prompt. Logique : js/swapshirt3.js ; réglages : swapShirt3 (js/config.js). -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">VS</div>
+      <div>
+        <h1>Preview Match Studio</h1>
+        <p data-i18n="swap3.subtitle">Swap shirt 3 · montage par l'IA d'OpenAI</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a class="btn ghost" href="index.html" data-i18n="player.back">← Visuels de match</a>
+      <nav class="seg" aria-label="Pages photo joueur" data-i18n-attr="aria-label:player.navAria">
+        <a href="player.html" data-i18n="player.nav1">1 joueur</a>
+        <a href="player2.html" data-i18n="player.nav2">2 joueurs</a>
+        <a href="ballondor.html" data-i18n="player.nav3">Ballon d'Or</a>
+        <a href="swapshirt.html" data-i18n="player.nav4">Swap shirt</a>
+        <a href="swapshirt2.html" data-i18n="player.nav5">Swap shirt 2</a>
+        <a href="swapshirt3.html" aria-current="page" data-i18n="player.nav6">Swap shirt 3</a>
+      </nav>
+      <select class="select lang-select" id="langSelect" aria-label="Langue" data-i18n-attr="aria-label:aria.lang"></select>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage-col">
+      <div class="stage swap-stage" id="stage">
+        <canvas id="editor" tabindex="0" aria-label="Zone d'édition du visuel" data-i18n-attr="aria-label:aria.canvas"></canvas>
+        <div class="swap-empty swap3-empty" id="emptyState">
+          <strong data-i18n="swap3.emptyTitle">Le montage apparaîtra ici</strong>
+          <span data-i18n="swap3.emptyText">Ajoutez des photos du joueur et du maillot, vérifiez le prompt, puis lancez la génération.</span>
+        </div>
+        <div class="stage-busy" id="stageBusy" hidden>
+          <div class="spinner" aria-hidden="true"></div>
+          <span id="stageBusyText"></span>
+          <button class="btn small ghost" id="cancelBtn" type="button" data-i18n="swap3.cancel">Annuler</button>
+        </div>
+      </div>
+      <div class="results" id="results" hidden></div>
+      <div class="stage-bar">
+        <span id="statusText"></span>
+        <span class="keys" data-i18n-html="swap3.keys"><kbd>Glisser</kbd> cadrer · <kbd>Molette</kbd> zoom</span>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <section class="card">
+        <h2><span class="step">1</span><span data-i18n="swap3.keyTitle">Clé API OpenAI</span></h2>
+        <label class="field"><span data-i18n="swap3.keyLabel">Clé (sk-…)</span>
+          <input type="password" id="apiKey" autocomplete="off" spellcheck="false" placeholder="sk-…">
+        </label>
+        <label class="check"><input type="checkbox" id="rememberKey"> <span data-i18n="swap3.remember">Mémoriser la clé dans ce navigateur</span></label>
+        <small class="note" data-i18n-html="swap3.keyNote">La clé reste dans votre navigateur et n'est envoyée qu'à OpenAI. Elle se crée sur <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a> (compte API avec crédits, distinct de l'abonnement ChatGPT ; OpenAI peut demander de vérifier l'organisation).</small>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">2</span><span data-i18n="swap3.playerTitle">Le joueur</span></h2>
+        <label class="field"><span data-i18n="swap3.playerName">Nom du joueur</span>
+          <input type="text" id="playerName" spellcheck="false" placeholder="ex. Kylian Mbappé" data-i18n-attr="placeholder:swap3.playerPlaceholder">
+        </label>
+        <div class="ref-grid" id="playerPhotos"></div>
+        <small class="note" data-i18n="swap3.playerNote">Jusqu'à 3 photos du joueur, de face et bien nettes : l'IA s'en sert comme références pour le visage.</small>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">3</span><span data-i18n="swap3.shirtTitle">Le maillot</span></h2>
+        <label class="field"><span data-i18n="swap3.clubName">Club</span>
+          <input type="text" id="clubName" spellcheck="false" placeholder="ex. Manchester City" data-i18n-attr="placeholder:swap3.clubPlaceholder">
+        </label>
+        <div class="ref-grid" id="shirtPhoto"></div>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">4</span><span data-i18n="swap3.promptTitle">Prompt</span></h2>
+        <label class="field"><span class="sr-only" data-i18n="swap3.promptTitle">Prompt</span>
+          <textarea id="promptInput" rows="7" spellcheck="true"></textarea>
+        </label>
+        <div class="row-btns">
+          <button class="btn small ghost" id="promptResetBtn" type="button" data-i18n="swap3.promptReset">Revenir au prompt type</button>
+        </div>
+        <small class="note" data-i18n="swap3.promptNote">Le prompt type se met à jour avec le nom du joueur et du club tant que vous ne le modifiez pas.</small>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">5</span><span data-i18n="swap3.generateTitle">Génération</span></h2>
+        <label class="field swap-field"><span data-i18n="swap3.model">Modèle</span>
+          <select class="select" id="modelSelect"></select>
+        </label>
+        <label class="field swap-field"><span data-i18n="swap.format">Format</span>
+          <select class="select" id="formatChoice"></select>
+        </label>
+        <label class="field swap-field"><span data-i18n="swap3.quality">Qualité</span>
+          <select class="select" id="qualitySelect"></select>
+        </label>
+        <label class="field swap-field"><span data-i18n="swap3.count">Propositions</span>
+          <select class="select" id="countSelect">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+          </select>
+        </label>
+        <button class="btn primary block swap-field" id="generateBtn" type="button" data-i18n="swap3.generate">Générer le montage</button>
+        <small class="note" data-i18n="swap3.costNote">Chaque proposition est facturée par OpenAI sur votre compte. Les photos sont envoyées à OpenAI ; les images générées restent dans cette page jusqu'à ce que vous la quittiez : téléchargez celles à garder.</small>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">6</span><span data-i18n="swap3.exportTitle">Logo &amp; téléchargement</span></h2>
+        <select class="select" id="siteSelect" aria-label="Site" data-i18n-attr="aria-label:site.title"></select>
+        <label class="check"><input type="checkbox" id="logoLight" checked> <span data-i18n="swap.logoLight">Version claire du logo (fond sombre)</span></label>
+        <label class="range" id="zoomField"><span data-i18n="swap.zoom">Zoom du cadrage</span>
+          <input type="range" id="zoomRange" min="100" max="300" step="5">
+          <output id="zoomOut"></output>
+        </label>
+        <button class="btn primary block swap-field" id="previewBtn" type="button" data-i18n="export.preview">Prévisualiser</button>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="previewDialog" class="dialog swap-dialog" aria-labelledby="previewTitle">
+    <div class="dialog-head">
+      <h3 id="previewTitle" data-i18n="dialog.title">Aperçu final</h3>
+      <button class="icon-btn" type="button" data-close aria-label="Fermer" data-i18n-attr="aria-label:dialog.close">×</button>
+    </div>
+    <div class="preview-img">
+      <img id="previewImg" alt="Aperçu du visuel exporté" data-i18n-attr="alt:dialog.imgAlt">
+      <p class="preview-error" id="previewError" hidden></p>
+    </div>
+    <div class="dialog-foot">
+      <label class="field grow"><span data-i18n="dialog.filename">Nom du fichier</span>
+        <span class="filename"><input type="text" id="filenameInput" spellcheck="false"><em id="extLabel">.jpg</em></span>
+      </label>
+      <label class="field"><span data-i18n="dialog.format">Format</span>
+        <select class="select" id="formatSelect">
+          <option value="jpeg">JPG</option>
+          <option value="webp">WebP</option>
+          <option value="png">PNG</option>
+        </select>
+      </label>
+      <span class="preview-meta" id="previewMeta"></span>
+      <div class="row-btns">
+        <button class="btn ghost" type="button" data-close data-i18n="dialog.back">Retour à l'édition</button>
+        <button class="btn primary" type="button" id="downloadBtn" data-i18n="dialog.download">Télécharger</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/swapshirt3.js"></script>
+</body>
+</html>
