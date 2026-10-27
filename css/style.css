@@ -660,3 +660,30 @@ output { text-align: right; font-size: 12.5px; color: var(--text); font-variant-
   .brand p { display: none; }
   .stage-bar .keys { display: none; }
 }
+
+/* ---------- Swap shirt ---------- */
+.tool-bar { margin-bottom: 12px; }
+.tool-bar button { padding: 8px 6px; font-size: 12.5px; }
+.tool-bar button:disabled { opacity: 0.4; cursor: not-allowed; }
+.swap-stage { margin-inline: auto; }
+.swap-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  padding: 24px;
+  border: 2px dashed var(--line-2);
+  border-radius: var(--radius);
+  color: var(--muted);
+  text-align: center;
+  cursor: pointer;
+}
+.swap-empty strong { color: var(--text); font-size: 18px; }
+.stage.is-over .swap-empty { border-color: var(--accent); background: var(--accent-soft); }
+.swap-field { margin-top: 12px; }
+.half-card.is-active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.half-card > .seg { margin-bottom: 10px; }
+.half-body > .check, .half-body > .range { margin-top: 10px; }
+/* Aperçu : l'image tient dans la hauteur de l'écran, quel que soit le format */
+.swap-dialog .preview-img img { width: auto; max-width: 100%; max-height: calc(100vh - 260px); margin-inline: auto; }

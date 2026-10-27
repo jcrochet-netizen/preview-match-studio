@@ -116,6 +116,31 @@ Même visuel que le Top 10 16/9, sans rang automatique : chaque ligne a une case
 des noms sont enregistrés à part du Top 10 Ballon d'Or. Réglages : `ballondorTop10ParisUnited` à la fin de
 `js/config.js` (`numberBox` : position et taille de la case).
 
+## Swap shirt (`swapshirt.html`)
+
+Visuel de transfert : le maillot du joueur est coupé en deux par une déchirure de papier ; chaque moitié
+garde le maillot de la photo ou reçoit l'image d'un autre maillot (futur club, autre tenue).
+
+1. **Photo du joueur** : glissez-la sur l'image ou dans la carte. Le maillot est détecté automatiquement
+   par une IA qui tourne dans le navigateur (Transformers.js 3.8.1, modèle `Xenova/segformer_b2_clothes`,
+   zones « Upper-clothes » et « Dress ») ; le modèle (≈ 30 Mo, ou ≈ 110 Mo en haute précision) se
+   télécharge au premier usage puis reste en cache. Aucune photo n'est envoyée à un serveur.
+2. **Zone et déchirure** : outils « Zone + » / « Zone − » (pinceau) pour corriger la zone du maillot,
+   « Déchirure » pour déplacer la ligne ou l'incliner (poignées haut et bas). Largeur réglable,
+   « Nouvelle déchirure » tire un autre tracé.
+3. **Moitiés** : pour chaque moitié, « Garder le maillot » ou « Nouveau maillot » + image du maillot vu de
+   face (PNG transparent, ou photo produit sur fond uni : le fond est retiré). Outil « Déplacer » (glisser,
+   molette pour la taille, flèches au pixel), sliders Taille / Rotation / Luminosité, outil « Déformer »
+   (grille 3 × 3 de poignées).
+4. **Rendu** : le nouveau maillot reprend la lumière et les plis de la photo. Les pixels du maillot d'origine
+   sont regroupés par famille de couleur et comparés à leurs voisins de même couleur : on garde l'ombre et
+   les plis, pas le dessin de l'ancien maillot (rayures, sponsor, écusson).
+5. **Format** : taille actuelle de la photo (réduite à 2400 px de côté au plus), 3:2 (1200 × 800),
+   16:9 (1200 × 675) ou 9:16 (1080 × 1920) ; outil « Cadrage » et zoom pour choisir la partie gardée.
+   Logo du site (facultatif) en haut à droite, version claire sur fond sombre.
+
+Réglages : `swapShirt` à la fin de `js/config.js` (modèle, zones retenues, formats, taille du logo).
+
 ## Ajouter un site et son template (pour toute l'équipe)
 
 Chaque site a son propre template : choisir le site dans le menu charge son fond et place son logo.

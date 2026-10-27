@@ -220,3 +220,24 @@ window.APP_CONFIG.ballondorTop10ParisUnited = {
   filePrefix: 'ballon-dor-top10-parisunited',
   numberBox: { x: 412, w: 46, h: 36, size: 26 },
 };
+
+// Page « Swap shirt » (swapshirt.html) : le maillot du joueur est coupé en deux par une déchirure ;
+// chaque moitié garde le maillot de la photo ou reçoit l'image d'un autre maillot (logique : js/swapshirt.js).
+window.APP_CONFIG.swapShirt = {
+  // Détection du maillot dans le navigateur : modèle de segmentation des vêtements (Transformers.js),
+  // téléchargé au premier usage puis gardé en cache. Zone du maillot : « Upper-clothes », plus « Dress »
+  // (le bas d'un maillot long est parfois pris pour une robe)
+  engineUrl: 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1',
+  model: 'Xenova/segformer_b2_clothes',
+  shirtLabels: ['Upper-clothes', 'Dress'],
+  // Formats d'export : taille de la photo, ou cadrage à largeur fixe
+  formats: [
+    { id: 'original' },
+    { id: '3x2', label: '3:2', width: 1200, height: 800 },
+    { id: '16x9', label: '16:9', width: 1200, height: 675 },
+    { id: '9x16', label: '9:16', width: 1080, height: 1920 },
+  ],
+  // Logo du site en haut à droite, en part de la largeur de l'image (zone maximale et marge)
+  logo: { w: 0.12, h: 0.045, margin: 0.025 },
+  filePrefix: 'swap-shirt',
+};

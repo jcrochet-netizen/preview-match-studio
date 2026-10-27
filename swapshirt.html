@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Swap shirt — Preview Match Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Swap shirt : le maillot du joueur est coupé en deux par une déchirure ; chaque moitié garde le maillot
+       de la photo ou reçoit l'image d'un autre maillot. Logique : js/swapshirt.js ; réglages : swapShirt (js/config.js). -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">VS</div>
+      <div>
+        <h1>Preview Match Studio</h1>
+        <p data-i18n="swap.subtitle">Swap shirt · maillot coupé en deux</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a class="btn ghost" href="index.html" data-i18n="player.back">← Visuels de match</a>
+      <nav class="seg" aria-label="Pages photo joueur" data-i18n-attr="aria-label:player.navAria">
+        <a href="player.html" data-i18n="player.nav1">1 joueur</a>
+        <a href="player2.html" data-i18n="player.nav2">2 joueurs</a>
+        <a href="ballondor.html" data-i18n="player.nav3">Ballon d'Or</a>
+        <a href="swapshirt.html" aria-current="page" data-i18n="player.nav4">Swap shirt</a>
+      </nav>
+      <select class="select lang-select" id="langSelect" aria-label="Langue" data-i18n-attr="aria-label:aria.lang"></select>
+      <button class="btn ghost" id="resetBtn" type="button" data-i18n="player.new">Nouvelle photo</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage-col">
+      <div class="seg seg-block tool-bar" id="toolBar" role="group" aria-label="Outils" data-i18n-attr="aria-label:swap.tools">
+        <button type="button" data-tool="move" data-i18n="swap.toolMove">Déplacer</button>
+        <button type="button" data-tool="warp" data-i18n="swap.toolWarp">Déformer</button>
+        <button type="button" data-tool="add" data-i18n="swap.toolAdd">Zone +</button>
+        <button type="button" data-tool="erase" data-i18n="swap.toolErase">Zone −</button>
+        <button type="button" data-tool="tear" data-i18n="swap.toolTear">Déchirure</button>
+        <button type="button" data-tool="frame" data-i18n="swap.toolFrame">Cadrage</button>
+      </div>
+      <div class="stage swap-stage" id="stage">
+        <canvas id="editor" tabindex="0" aria-label="Zone d'édition du visuel" data-i18n-attr="aria-label:aria.canvas"></canvas>
+        <label class="swap-empty" id="emptyDrop">
+          <input type="file" accept="image/*" hidden id="photoFileStage">
+          <strong data-i18n="swap.emptyTitle">Importez la photo d'un joueur</strong>
+          <span data-i18n="swap.emptyText">Glissez-la ici ou cliquez pour la choisir : son maillot est détecté automatiquement.</span>
+        </label>
+        <div class="stage-busy" id="stageBusy" hidden>
+          <div class="spinner" aria-hidden="true"></div>
+          <span id="stageBusyText"></span>
+        </div>
+      </div>
+      <div class="stage-bar">
+        <span id="statusText"></span>
+        <span class="keys" id="keysText"></span>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <section class="card">
+        <h2><span class="step">1</span><span data-i18n="site.title">Site</span></h2>
+        <select class="select" id="siteSelect" aria-label="Site" data-i18n-attr="aria-label:site.title"></select>
+        <label class="check"><input type="checkbox" id="logoLight" checked> <span data-i18n="swap.logoLight">Version claire du logo (fond sombre)</span></label>
+        <small class="note" data-i18n="ballondor.siteNote">Logo du site en haut à droite (facultatif).</small>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">2</span><span data-i18n="swap.photoTitle">Photo du joueur</span></h2>
+        <label class="drop" id="photoDrop">
+          <input type="file" accept="image/*" hidden id="photoFile">
+          <img id="photoThumb" alt="" hidden>
+          <span id="photoDropText" data-i18n="swap.photoDrop">Glissez la photo ici ou cliquez pour la choisir</span>
+        </label>
+        <label class="field swap-field"><span data-i18n="swap.engine">Détection du maillot</span>
+          <select class="select" id="engineSelect">
+            <option value="standard" data-i18n="swap.engineStandard">Standard (≈ 30 Mo, recommandé)</option>
+            <option value="high" data-i18n="swap.engineHigh">Haute précision (≈ 110 Mo)</option>
+          </select>
+        </label>
+        <div class="progress" id="detectProgress" hidden><div class="progress-bar" id="detectBar"></div></div>
+        <div class="row-btns">
+          <button class="btn small ghost" id="redetectBtn" type="button" hidden data-i18n="swap.redetect">Relancer la détection</button>
+        </div>
+        <small class="note" data-i18n="swap.engineNote">L'IA tourne dans votre navigateur : la photo n'est envoyée à aucun serveur. Le modèle se télécharge au premier usage, puis reste en cache.</small>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">3</span><span data-i18n="swap.zoneTitle">Zone du maillot et déchirure</span></h2>
+        <label class="range"><span data-i18n="swap.brushSize">Pinceau</span>
+          <input type="range" id="brushSize" min="6" max="200" step="2">
+          <output id="brushSizeOut"></output>
+        </label>
+        <label class="check"><input type="checkbox" id="showZone"> <span data-i18n="swap.showZone">Afficher la zone du maillot</span></label>
+        <label class="range"><span data-i18n="swap.tearWidth">Largeur de la déchirure</span>
+          <input type="range" id="tearWidth" min="0" max="300" step="10">
+          <output id="tearWidthOut"></output>
+        </label>
+        <div class="row-btns">
+          <button class="btn small ghost" id="newTearBtn" type="button" data-i18n="swap.tearNew">Nouvelle déchirure</button>
+          <button class="btn small ghost" id="resetZoneBtn" type="button" data-i18n="swap.resetZone">Revenir à la détection</button>
+        </div>
+        <small class="note" data-i18n="swap.zoneNote">Outils « Zone + » et « Zone − » au-dessus de l'image : corrigez la zone du maillot. Outil « Déchirure » : glissez la ligne, ou ses poignées haut et bas pour l'incliner.</small>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">4</span><span data-i18n="swap.halvesTitle">Les deux moitiés</span></h2>
+        <div id="halves"></div>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">5</span><span data-i18n="swap.renderTitle">Rendu</span></h2>
+        <label class="range"><span data-i18n="swap.light">Lumière de la photo</span>
+          <input type="range" id="lightRange" min="0" max="100" step="5">
+          <output id="lightOut"></output>
+        </label>
+        <label class="range"><span data-i18n="swap.folds">Plis du maillot d'origine</span>
+          <input type="range" id="foldsRange" min="0" max="100" step="5">
+          <output id="foldsOut"></output>
+        </label>
+        <small class="note" data-i18n="swap.renderNote">Le nouveau maillot reprend la lumière et les plis de la photo, pour se fondre dans l'image.</small>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">6</span><span data-i18n="swap.exportTitle">Format &amp; téléchargement</span></h2>
+        <label class="field swap-field"><span data-i18n="swap.format">Format</span>
+          <select class="select" id="formatChoice"></select>
+        </label>
+        <label class="range" id="zoomField"><span data-i18n="swap.zoom">Zoom du cadrage</span>
+          <input type="range" id="zoomRange" min="100" max="300" step="5">
+          <output id="zoomOut"></output>
+        </label>
+        <small class="note" id="frameNote" data-i18n="swap.frameNote">Outil « Cadrage » : glissez l'image pour choisir la partie gardée.</small>
+        <button class="btn primary block" id="previewBtn" type="button" data-i18n="export.preview">Prévisualiser</button>
+      </section>
+    </aside>
+  </main>
+
+  <template id="halfTpl">
+    <div class="team half-card">
+      <div class="team-head">
+        <span class="team-label" data-role="label"></span>
+        <span class="badge" data-role="badge"></span>
+      </div>
+      <div class="seg seg-block" data-role="mode" role="group">
+        <button type="button" data-mode="keep" data-i18n="swap.keep">Garder le maillot</button>
+        <button type="button" data-mode="image" data-i18n="swap.replace">Nouveau maillot</button>
+      </div>
+      <div class="half-body" data-role="body">
+        <label class="drop half-drop" data-role="drop">
+          <input type="file" accept="image/*" hidden data-role="file">
+          <img data-role="thumb" alt="" hidden>
+          <span data-role="dropText" data-i18n="swap.shirtDrop">Image du maillot vu de face : glissez-la ici ou cliquez</span>
+        </label>
+        <label class="check"><input type="checkbox" data-role="removeBg" checked> <span data-i18n="swap.removeBg">Retirer le fond de l'image du maillot</span></label>
+        <label class="range"><span data-i18n="swap.size">Taille</span>
+          <input type="range" min="40" max="250" step="1" data-role="zoom">
+          <output data-role="zoomOut"></output>
+        </label>
+        <label class="range"><span data-i18n="swap.rotation">Rotation</span>
+          <input type="range" min="-30" max="30" step="0.5" data-role="rot">
+          <output data-role="rotOut"></output>
+        </label>
+        <label class="range"><span data-i18n="swap.brightness">Luminosité</span>
+          <input type="range" min="-60" max="60" step="1" data-role="bright">
+          <output data-role="brightOut"></output>
+        </label>
+        <div class="row-btns">
+          <button class="btn small ghost" type="button" data-role="recenter" data-i18n="swap.recenter">Recentrer</button>
+          <button class="btn small ghost" type="button" data-role="unwarp" data-i18n="swap.unwarp">Annuler la déformation</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <dialog id="previewDialog" class="dialog swap-dialog" aria-labelledby="previewTitle">
+    <div class="dialog-head">
+      <h3 id="previewTitle" data-i18n="dialog.title">Aperçu final</h3>
+      <button class="icon-btn" type="button" data-close aria-label="Fermer" data-i18n-attr="aria-label:dialog.close">×</button>
+    </div>
+    <div class="preview-img">
+      <img id="previewImg" alt="Aperçu du visuel exporté" data-i18n-attr="alt:dialog.imgAlt">
+      <p class="preview-error" id="previewError" hidden></p>
+    </div>
+    <div class="dialog-foot">
+      <label class="field grow"><span data-i18n="dialog.filename">Nom du fichier</span>
+        <span class="filename"><input type="text" id="filenameInput" spellcheck="false"><em id="extLabel">.jpg</em></span>
+      </label>
+      <label class="field"><span data-i18n="dialog.format">Format</span>
+        <select class="select" id="formatSelect">
+          <option value="jpeg">JPG</option>
+          <option value="webp">WebP</option>
+          <option value="png">PNG</option>
+        </select>
+      </label>
+      <span class="preview-meta" id="previewMeta"></span>
+      <div class="row-btns">
+        <button class="btn ghost" type="button" data-close data-i18n="dialog.back">Retour à l'édition</button>
+        <button class="btn primary" type="button" id="downloadBtn" data-i18n="dialog.download">Télécharger</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/swapshirt.js"></script>
+</body>
+</html>
