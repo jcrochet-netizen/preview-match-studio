@@ -146,6 +146,43 @@
     return out;
   }
 
+  // Distance (px) de chaque pixel opaque au pixel transparent le plus proche (transformée de distance en
+  // deux passes) ; les bords de l'image ne comptent pas comme transparents
+  function edgeDistance(p, w, h) {
+    const d = new Float32Array(w * h);
+    for (let i = 0; i < d.length; i++) d[i] = p[i * 4 + 3] < 128 ? 0 : 1e9;
+    const D = Math.SQRT2;
+    for (let y = 0; y < h; y++) {
+      for (let col = 0; col < w; col++) {
+        const i = y * w + col;
+        let v = d[i];
+        if (!v) continue;
+        if (col > 0) v = Math.min(v, d[i - 1] + 1);
+        if (y > 0) {
+          v = Math.min(v, d[i - w] + 1);
+          if (col > 0) v = Math.min(v, d[i - w - 1] + D);
+          if (col < w - 1) v = Math.min(v, d[i - w + 1] + D);
+        }
+        d[i] = v;
+      }
+    }
+    for (let y = h - 1; y >= 0; y--) {
+      for (let col = w - 1; col >= 0; col--) {
+        const i = y * w + col;
+        let v = d[i];
+        if (!v) continue;
+        if (col < w - 1) v = Math.min(v, d[i + 1] + 1);
+        if (y < h - 1) {
+          v = Math.min(v, d[i + w] + 1);
+          if (col < w - 1) v = Math.min(v, d[i + w + 1] + D);
+          if (col > 0) v = Math.min(v, d[i + w - 1] + D);
+        }
+        d[i] = v;
+      }
+    }
+    return d;
+  }
+
   const prefs = {
     get(key, fallback) {
       try {
@@ -195,6 +232,7 @@
     mode: 'keep', // 'keep' : maillot de la photo ; 'image' : image importée
     source: null, // image du maillot telle qu'importée (réduite)
     img: null, // image du maillot prête (fond retiré, recadrée)
+    color: null, // couleur principale du maillot (pour couvrir toute la moitié)
     name: '',
     removeBg: true,
     x: 0, // centre de l'image du maillot, en px de la photo
@@ -212,7 +250,11 @@
     logoLight: prefs.get('swap:logoLight', true),
     photo: null, // { canvas, w, h, orig: { w, h }, name }
     mask: null, // zone du maillot (canvas à la taille de la photo, opacité = zone)
-    autoMask: null, // zone trouvée par la détection, pour y revenir
+    autoBase: null, // zone trouvée par la détection, avant le réglage du bord
+    autoMask: null, // zone détectée avec le bord réglé, pour y revenir
+    bgMask: null, // fond de la photo selon le modèle (opacité = fond)
+    detectBox: null, // cadre de la zone détectée (px de la photo)
+    grow: prefs.get('swap:grow', 2), // bord de la zone, en % de la largeur du maillot (+ vers le cou et les bras)
     shape: null, // { box, cx, cy, bw, bh, top, bottom } : cadre de travail et mesures de la zone
     // Déchirure : ligne automatique (milieu du col → milieu du bas du maillot), décalée et inclinée par
     // l'utilisateur (en % de la largeur du maillot) ; top et bottom = position obtenue, en px de la photo
@@ -269,6 +311,8 @@
     detectProgress: $('#detectProgress'),
     detectBar: $('#detectBar'),
     redetectBtn: $('#redetectBtn'),
+    growRange: $('#growRange'),
+    growOut: $('#growOut'),
     brushSize: $('#brushSize'),
     brushSizeOut: $('#brushSizeOut'),
     showZone: $('#showZone'),
@@ -804,11 +848,12 @@
     x.imageSmoothingQuality = 'high';
     drawShirt(x, h);
     x.restore();
-    // Zone entière couverte : là où l'image du maillot ne va pas (bout des manches, col), ses couleurs
-    // voisines prolongées
-    if (state.fill) {
+    // Zone entière couverte : là où l'image du maillot ne va pas (bout des manches, col), sa couleur
+    // principale (la lumière et les plis de la photo s'y appliquent ensuite)
+    if (state.fill && h.color) {
       x.globalCompositeOperation = 'destination-over';
-      x.drawImage(fillTransparent(layer, 4), 0, 0, b.w, b.h);
+      x.fillStyle = h.color;
+      x.fillRect(0, 0, b.w, b.h);
       x.globalCompositeOperation = 'source-over';
     }
     if (h.bright) {
@@ -837,28 +882,28 @@
     cache.layers[i] = layer;
   }
 
-  // Zones transparentes remplies par les couleurs voisines (pyramide « push-pull », réduite d'un facteur
-  // « factor ») : chaque niveau plus petit moyenne les pixels couverts, puis comble les trous du niveau au-dessus
-  function fillTransparent(src, factor) {
-    let cur = makeCanvas(src.width / factor, src.height / factor);
-    cur.getContext('2d').drawImage(src, 0, 0, cur.width, cur.height);
-    const levels = [cur];
-    while (cur.width > 1 || cur.height > 1) {
-      const next = makeCanvas(Math.ceil(cur.width / 2), Math.ceil(cur.height / 2));
-      const nx = next.getContext('2d');
-      nx.drawImage(cur, 0, 0, next.width, next.height);
-      // Pixels partiellement couverts rendus opaques : même couleur, opacité renforcée
-      for (let q = 0; q < 3; q++) nx.drawImage(next, 0, 0);
-      levels.push(next);
-      cur = next;
+  // Couleur principale d'un maillot : médiane des pixels du torse de l'image (milieu en largeur, sous le col),
+  // hors manches et bordures
+  function mainColor(img) {
+    const w = img.width;
+    const h = img.height;
+    const x0 = Math.round(w * 0.3);
+    const y0 = Math.round(h * 0.3);
+    const cw = Math.max(1, Math.round(w * 0.4));
+    const ch = Math.max(1, Math.round(h * 0.5));
+    const d = readCtx(img).getImageData(x0, y0, cw, ch).data;
+    const rs = [];
+    const gs = [];
+    const bs = [];
+    for (let i = 0; i < d.length; i += 16) {
+      if (d[i + 3] < 200) continue;
+      rs.push(d[i]);
+      gs.push(d[i + 1]);
+      bs.push(d[i + 2]);
     }
-    for (let i = levels.length - 2; i >= 0; i--) {
-      const lx = levels[i].getContext('2d');
-      lx.globalCompositeOperation = 'destination-over';
-      lx.drawImage(levels[i + 1], 0, 0, levels[i].width, levels[i].height);
-      lx.globalCompositeOperation = 'source-over';
-    }
-    return levels[0];
+    if (!rs.length) return null;
+    const med = (v) => v.sort((a, b) => a - b)[v.length >> 1];
+    return `rgb(${med(rs)}, ${med(gs)}, ${med(bs)})`;
   }
 
   // Placement de départ : le maillot couvre la zone détectée, col en haut de la zone
@@ -936,8 +981,9 @@
   }
 
   function prepareShirt(h) {
-    if (!h.source) { h.img = null; return; }
+    if (!h.source) { h.img = null; h.color = null; return; }
     h.img = trimTransparent(h.removeBg ? removeFlatBackground(h.source) : h.source);
+    h.color = mainColor(h.img);
   }
 
   // ---------- Recalculs regroupés ----------
@@ -1161,6 +1207,10 @@
     els.canvas.style.cursor = { move: 'move', warp: 'default', add: 'crosshair', erase: 'crosshair', tear: 'ew-resize', frame: 'grab' }[state.tool];
     els.keys.innerHTML = t(`swap.keys.${state.tool}`);
 
+    els.growRange.value = state.grow;
+    els.growRange.disabled = !state.autoBase;
+    const growPx = state.detectBox ? Math.round((state.grow / 100) * state.detectBox.w) : null;
+    els.growOut.textContent = growPx == null ? `${num(state.grow, 1)} %` : `${growPx > 0 ? '+' : ''}${growPx} px`;
     els.brushSize.value = state.brush;
     els.brushSizeOut.textContent = `${state.brush} px`;
     els.showZone.checked = state.showZone;
@@ -1364,6 +1414,9 @@
     };
     state.mask = makeCanvas(state.photo.w, state.photo.h);
     state.autoMask = null;
+    state.autoBase = null;
+    state.bgMask = null;
+    state.detectBox = null;
     state.shape = null;
     state.frames = {};
     state.halves.forEach((h) => { h.placed = false; });
@@ -1421,6 +1474,7 @@
       if (token !== detectToken) return;
       state.faceX = first.faceX;
       let found = first.hits.length ? maskFromSegmentation(first.hits, full) : null;
+      let used = first;
       // 2e passage recadré sur le maillot (large marge) : le modèle, qui travaille en 512 px, voit le torse
       // bien plus grand, d'où des bords précis (espace entre le bras et le maillot, bas du maillot)
       if (found) {
@@ -1435,10 +1489,18 @@
           const second = await segment(pipe, rect, DETECT_MAX);
           if (token !== detectToken) return;
           const refined = second.hits.length ? maskFromSegmentation(second.hits, rect) : null;
-          if (refined) found = refined;
+          if (refined) {
+            found = refined;
+            used = second;
+          }
         }
       }
-      const mask = found && found.canvas;
+      if (found) {
+        state.autoBase = found.canvas;
+        state.detectBox = found.box;
+        state.bgMask = backgroundMask(used.bg, used.rect);
+      }
+      const mask = found && adjustZone();
       state.detect.busy = false;
       if (!mask) {
         state.autoMask = null;
@@ -1475,9 +1537,81 @@
     const face = out.find((o) => o.label === 'Face');
     const fx = face ? maskCenterX(face.mask) : null;
     return {
+      rect,
       hits: out.filter((o) => SW.shirtLabels.includes(o.label)).map((o) => ({ label: o.label, mask: o.mask })),
+      bg: (out.find((o) => o.label === 'Background') || {}).mask || null,
       faceX: fx == null ? null : rect.x + (fx * rect.w) / c.width,
     };
+  }
+
+  // Fond d'après le modèle (opacité = fond), à la taille de la photo ; hors du recadrage, tout est fond
+  function backgroundMask(raw, rect) {
+    const p = state.photo;
+    const c = makeCanvas(p.w, p.h);
+    const x = c.getContext('2d');
+    x.fillStyle = '#fff';
+    x.fillRect(0, 0, p.w, p.h);
+    if (!raw) return c;
+    const small = makeCanvas(raw.width, raw.height);
+    const sx = small.getContext('2d');
+    const img = sx.createImageData(raw.width, raw.height);
+    const ch = raw.channels || 1;
+    for (let i = 0; i < raw.width * raw.height; i++) img.data.set([255, 255, 255, raw.data[i * ch] > 127 ? 255 : 0], i * 4);
+    sx.putImageData(img, 0, 0);
+    x.clearRect(rect.x, rect.y, rect.w, rect.h);
+    x.imageSmoothingEnabled = true;
+    x.drawImage(small, rect.x, rect.y, rect.w, rect.h);
+    return c;
+  }
+
+  // Zone détectée avec le bord réglé : élargie de quelques px vers le cou et les bras (le col et le bas des
+  // manches, fines bandes que le modèle rattache au cou ou au bras), jamais dans le fond (espace entre le
+  // bras et le maillot) ; rétrécie si le réglage est négatif
+  function adjustZone() {
+    const p = state.photo;
+    const out = makeCanvas(p.w, p.h);
+    const ox = readCtx(out);
+    ox.drawImage(state.autoBase, 0, 0);
+    const b = state.detectBox;
+    const g = (state.grow / 100) * b.w;
+    if (Math.abs(g) < 0.5) return out;
+    const m = Math.ceil(Math.abs(g)) + 6;
+    const bx = Math.max(0, Math.floor(b.x - m));
+    const by = Math.max(0, Math.floor(b.y - m));
+    const w = Math.min(p.w, Math.ceil(b.x + b.w + m)) - bx;
+    const h = Math.min(p.h, Math.ceil(b.y + b.h + m)) - by;
+    const img = ox.getImageData(bx, by, w, h);
+    const d = img.data;
+    if (g > 0) {
+      const bg = readCtx(state.bgMask).getImageData(bx, by, w, h).data;
+      // Distance de chaque pixel hors zone à la zone (transformée de distance sur l'inverse)
+      const inv = new Uint8ClampedArray(w * h * 4);
+      for (let i = 0; i < w * h; i++) inv[i * 4 + 3] = d[i * 4 + 3] < 128 ? 255 : 0;
+      const dist = edgeDistance(inv, w, h);
+      for (let i = 0; i < w * h; i++) {
+        if (bg[i * 4 + 3] >= 128) continue;
+        const a = clamp(g + 0.5 - dist[i], 0, 1) * 255;
+        if (a > d[i * 4 + 3]) d[i * 4 + 3] = a;
+      }
+    } else {
+      const dist = edgeDistance(d, w, h);
+      for (let i = 0; i < w * h; i++) d[i * 4 + 3] = Math.round(d[i * 4 + 3] * clamp((dist[i] + g + 0.5) / 1.5, 0, 1));
+    }
+    ox.putImageData(img, bx, by);
+    return out;
+  }
+
+  function setGrow(v) {
+    state.grow = clamp(v, -1.5, 4);
+    prefs.set('swap:grow', state.grow);
+    if (state.autoBase) {
+      state.autoMask = adjustZone();
+      state.mask.getContext('2d').globalCompositeOperation = 'copy';
+      state.mask.getContext('2d').drawImage(state.autoMask, 0, 0);
+      state.mask.getContext('2d').globalCompositeOperation = 'source-over';
+      invalidate({ shape: true, tint: true });
+    }
+    refreshUI();
   }
 
   // Centre horizontal d'une zone du modèle (null si vide)
@@ -1542,6 +1676,33 @@
     if (!sizes.length) return null;
     const biggest = Math.max(...sizes);
     if (biggest < w * h * 0.002) return null;
+    // Petits trous de la zone comblés (écusson, logo, numéro que le modèle ne compte pas dans le maillot) ;
+    // les grands (bras croisé devant le torse) restent
+    const keepZone = (i) => label[i] >= 0 && sizes[label[i]] >= biggest * 0.15;
+    const hole = new Int32Array(w * h).fill(-1);
+    let zoneSize = 0;
+    for (let i = 0; i < w * h; i++) if (keepZone(i)) zoneSize++;
+    const filled = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      if (keepZone(i) || hole[i] >= 0) continue;
+      const pixels = [];
+      let touchesBorder = false;
+      const stack = [i];
+      hole[i] = i;
+      while (stack.length) {
+        const j = stack.pop();
+        pixels.push(j);
+        const x = j % w;
+        if (x === 0 || x === w - 1 || j < w || j >= w * (h - 1)) touchesBorder = true;
+        const next = [x > 0 ? j - 1 : -1, x < w - 1 ? j + 1 : -1, j - w, j + w];
+        for (const q of next) {
+          if (q < 0 || q >= w * h || keepZone(q) || hole[q] >= 0) continue;
+          hole[q] = i;
+          stack.push(q);
+        }
+      }
+      if (!touchesBorder && pixels.length < zoneSize * 0.04) pixels.forEach((j) => { filled[j] = 1; });
+    }
     const small = makeCanvas(w, h);
     const sx = small.getContext('2d');
     const img = sx.createImageData(w, h);
@@ -1550,7 +1711,7 @@
     let maxX = -1;
     let maxY = -1;
     for (let i = 0; i < w * h; i++) {
-      const keep = label[i] >= 0 && sizes[label[i]] >= biggest * 0.15;
+      const keep = keepZone(i) || filled[i] === 1;
       img.data.set([255, 255, 255, keep ? 255 : 0], i * 4);
       if (!keep) continue;
       const x = i % w;
@@ -1975,6 +2136,11 @@
     els.resetBtn.addEventListener('click', resetAll);
 
     els.brushSize.addEventListener('input', () => setBrush(Number(els.brushSize.value)));
+    els.growRange.addEventListener('change', () => setGrow(Number(els.growRange.value)));
+    els.growRange.addEventListener('input', () => {
+      state.grow = Number(els.growRange.value);
+      refreshUI();
+    });
     els.showZone.addEventListener('change', () => { state.showZone = els.showZone.checked; paint(); });
     els.tearWidth.addEventListener('input', () => {
       state.tear.width = Number(els.tearWidth.value);

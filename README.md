@@ -126,7 +126,9 @@ garde le maillot de la photo ou reçoit l'image d'un autre maillot (futur club, 
    zones « Upper-clothes » et « Dress », celle-ci limitée au bas du maillot pour ne pas prendre le short) ;
    le modèle (≈ 30 Mo, ou ≈ 110 Mo en haute précision) se télécharge au premier usage puis reste en cache.
    Deux passages : la photo entière pour situer le maillot, puis un recadrage sur le joueur pour des bords
-   précis (espace entre le bras et le maillot). Aucune photo n'est envoyée à un serveur.
+   précis (espace entre le bras et le maillot). Les petits trous de la zone (écusson, logo) sont comblés.
+   « Bord de la zone » (2 % de la largeur du maillot par défaut) l'élargit vers le cou et les bras pour
+   couvrir le col et le bas des manches, jamais dans le fond. Aucune photo n'est envoyée à un serveur.
 2. **Zone et déchirure** : le bord de la zone détectée est recalé sur les contours de la photo (filtre
    guidé), pour un col et des manches nets. Outils « Zone + » / « Zone − » (pinceau) pour la corriger.
    La déchirure part du milieu du col (entre les épaules, et le visage s'il est trouvé) jusqu'au milieu du
@@ -138,7 +140,7 @@ garde le maillot de la photo ou reçoit l'image d'un autre maillot (futur club, 
    molette pour la taille, flèches au pixel), sliders Taille / Rotation / Luminosité, outil « Déformer »
    (grille 3 × 3 de poignées).
 4. **Rendu** : la moitié est entièrement couverte par le nouveau maillot (case cochée par défaut) : là où
-   son image ne va pas (bout des manches, col), ses couleurs voisines sont prolongées. Le fond uni de
+   son image ne va pas (bout des manches, col), on met sa couleur principale. Le fond uni de
    l'image importée est retiré avec son liseré clair. Le nouveau maillot reprend la lumière et les plis de la photo. Les pixels du maillot d'origine
    sont regroupés par famille de couleur et comparés à leurs voisins de même couleur : on garde l'ombre et
    les plis, pas le dessin de l'ancien maillot (rayures, sponsor, écusson).
