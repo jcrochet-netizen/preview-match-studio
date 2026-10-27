@@ -17,6 +17,10 @@
   const SHIRT_MAX = 1400; // image de maillot importée, réduite au besoin
   const GRID = 8; // subdivisions du maillage de déformation (par côté)
   const TOOLS = ['move', 'warp', 'add', 'erase', 'tear', 'frame'];
+  // Swap shirt 2 (swapshirt2.html, data-mode="duo") : deux photos ; le maillot de l'autre photo remplace une
+  // moitié de celui de la photo de base. Réglages enregistrés à part (préfixe « swap2 »).
+  const DUO = document.body.dataset.mode === 'duo';
+  const P = DUO ? 'swap2' : 'swap';
 
   // ---------- Utilitaires ----------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -247,28 +251,27 @@
 
   const state = {
     site: null,
-    logoLight: prefs.get('swap:logoLight', true),
-    photo: null, // { canvas, w, h, orig: { w, h }, name }
+    logoLight: prefs.get(`${P}:logoLight`, true),
+    photo: null, // photo de base : { id, canvas, w, h, orig: { w, h }, name, det } (det : détection)
+    photos: [null, null], // Swap shirt 2 : les deux photos
+    baseIndex: 0, // Swap shirt 2 : laquelle est la photo de base
+    donor: null, // Swap shirt 2 : maillot de l'autre photo { img, shape, name, color }
     mask: null, // zone du maillot (canvas à la taille de la photo, opacité = zone)
-    autoBase: null, // zone trouvée par la détection, avant le réglage du bord
-    autoMask: null, // zone détectée avec le bord réglé, pour y revenir
-    personMask: null, // silhouette du joueur (opacité = joueur), contour exact
-    blockMask: null, // short, cheveux… où la zone ne s'étend jamais (opacité = bloqué)
-    detectBox: null, // cadre de la zone détectée (px de la photo)
-    grow: prefs.get('swap:grow', 4), // bord de la zone, en % de la largeur du maillot (+ : col, nuque, flancs)
+    autoMask: null, // zone détectée avec le bord réglé, pour y revenir (détection brute : state.photo.det)
+    grow: prefs.get(`${P}:grow`, 4), // bord de la zone, en % de la largeur du maillot (+ : col, nuque, flancs)
     shape: null, // { box, cx, cy, bw, bh, top, bottom } : cadre de travail et mesures de la zone
     // Déchirure : ligne automatique (milieu du col → milieu du bas du maillot), décalée et inclinée par
     // l'utilisateur (en % de la largeur du maillot) ; top et bottom = position obtenue, en px de la photo
-    tear: { auto: null, shift: 0, tilt: 0, top: 0, bottom: 0, seed: 7, width: prefs.get('swap:tearWidth', 100) },
-    halves: [makeHalf(), makeHalf()],
+    tear: { auto: null, shift: 0, tilt: 0, top: 0, bottom: 0, seed: 7, width: prefs.get(`${P}:tearWidth`, 100) },
+    halves: [makeHalf(), { ...makeHalf(), mode: DUO ? 'image' : 'keep' }],
     active: 0, // moitié sélectionnée (outils Déplacer et Déformer)
     tool: 'move',
-    brush: prefs.get('swap:brush', 60),
+    brush: prefs.get(`${P}:brush`, 60),
     showZone: false,
-    fill: prefs.get('swap:fill', true), // zone entière couverte par le nouveau maillot (manches, col)
-    light: prefs.get('swap:light', 80),
-    folds: prefs.get('swap:folds', 60),
-    format: prefs.get('swap:format', 'original'),
+    fill: prefs.get(`${P}:fill`, true), // zone entière couverte par le nouveau maillot (manches, col)
+    light: prefs.get(`${P}:light`, DUO ? 45 : 80),
+    folds: prefs.get(`${P}:folds`, DUO ? 20 : 60),
+    format: prefs.get(`${P}:format`, 'original'),
     frames: {}, // cadrage par format : { zoom, cx, cy }
     detect: { busy: false, frac: null, text: '' },
     pointer: null, // dernière position du pointeur sur la photo (curseur du pinceau)
@@ -308,6 +311,9 @@
     photoFile: $('#photoFile'),
     photoThumb: $('#photoThumb'),
     photoDropText: $('#photoDropText'),
+    duoDrops: [...document.querySelectorAll('[data-photo]')],
+    baseSeg: $('#baseSeg'),
+    swapHalvesBtn: $('#swapHalvesBtn'),
     engineSelect: $('#engineSelect'),
     detectProgress: $('#detectProgress'),
     detectBar: $('#detectBar'),
@@ -382,12 +388,14 @@
   // ---------- Zone du maillot ----------
   // Cadre de travail (zone + marge), centre de gravité et largeur du maillot, mesurés sur une copie réduite
   function computeShape() {
-    const p = state.photo;
-    if (!p || !state.mask) { state.shape = null; return; }
+    state.shape = state.photo && state.mask ? shapeOf(state.photo, state.mask) : null;
+  }
+
+  function shapeOf(p, mask) {
     const k = Math.min(1, 600 / Math.max(p.w, p.h));
     const c = makeCanvas(p.w * k, p.h * k);
     const x = readCtx(c);
-    x.drawImage(state.mask, 0, 0, c.width, c.height);
+    x.drawImage(mask, 0, 0, c.width, c.height);
     const d = x.getImageData(0, 0, c.width, c.height).data;
     let minX = c.width;
     let minY = c.height;
@@ -397,6 +405,7 @@
     let sy = 0;
     let n = 0;
     const rows = []; // [gauche, droite] de la zone sur chaque ligne
+    const colTop = new Int32Array(c.width).fill(-1); // première ligne de la zone dans chaque colonne
     for (let y = 0; y < c.height; y++) {
       let rl = -1;
       let rr = -1;
@@ -405,6 +414,7 @@
         if (a < 60) continue;
         if (rl < 0) rl = col;
         rr = col;
+        if (colTop[col] < 0) colTop[col] = y;
         if (col < minX) minX = col;
         if (col > maxX) maxX = col;
         if (y < minY) minY = y;
@@ -415,7 +425,7 @@
       }
       rows.push(rl < 0 ? null : [rl, rr]);
     }
-    if (n < 12) { state.shape = null; return; }
+    if (n < 12) return null;
     // Milieu de la zone sur une tranche de lignes (fractions de la hauteur) : col en haut, bas du maillot
     const middle = (f0, f1) => {
       let sum = 0;
@@ -429,6 +439,32 @@
       }
       return count ? sum / count / k : null;
     };
+    // Largeur médiane de la zone sur une tranche de lignes (sous les manches : largeur du torse)
+    const width = (f0, f1) => {
+      const ws = [];
+      const y0 = Math.round(minY + (maxY - minY) * f0);
+      const y1 = Math.round(minY + (maxY - minY) * f1);
+      for (let y = y0; y <= y1; y++) if (rows[y]) ws.push(rows[y][1] - rows[y][0] + 1);
+      return ws.length ? ws.sort((a, b) => a - b)[ws.length >> 1] / k : null;
+    };
+    // Milieu de l'encolure : le creux du col entre les épaules (colonnes du milieu où la zone commence le
+    // plus bas), indépendant de la hauteur des épaules et de la nuque
+    const neck = (() => {
+      const cxs = sx / n;
+      const half = (maxX - minX + 1) * 0.3;
+      let deepest = -1;
+      for (let col = Math.max(0, Math.round(cxs - half)); col <= Math.min(c.width - 1, Math.round(cxs + half)); col++) {
+        if (colTop[col] > deepest) deepest = colTop[col];
+      }
+      if (deepest < 0) return null;
+      const tol = Math.max(1, (maxY - minY) * 0.025);
+      let sum = 0;
+      let count = 0;
+      for (let col = Math.max(0, Math.round(cxs - half)); col <= Math.min(c.width - 1, Math.round(cxs + half)); col++) {
+        if (colTop[col] >= deepest - tol) { sum += col; count++; }
+      }
+      return count ? (sum / count + 0.5) / k : null;
+    })();
     const bw = (maxX - minX + 1) / k;
     const bh = (maxY - minY + 1) / k;
     const mx = bw * 0.1;
@@ -437,7 +473,7 @@
     const y0 = Math.max(0, Math.floor(minY / k - my));
     const x1 = Math.min(p.w, Math.ceil((maxX + 1) / k + mx));
     const y1 = Math.min(p.h, Math.ceil((maxY + 1) / k + my));
-    state.shape = {
+    return {
       box: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 },
       cx: (sx / n + 0.5) / k,
       cy: (sy / n + 0.5) / k,
@@ -445,8 +481,9 @@
       bh,
       top: minY / k,
       bottom: (maxY + 1) / k,
-      neckX: middle(0, 0.06),
+      neckX: neck ?? middle(0, 0.06),
       hemX: middle(0.86, 0.97),
+      torsoW: width(0.55, 0.75) || bw,
     };
   }
 
@@ -911,6 +948,20 @@
   function placeHalf(h) {
     const s = state.shape;
     if (!s || !h.img) { h.placed = false; return; }
+    if (DUO && state.donor) {
+      // Maillot de l'autre photo : même largeur de torse, milieu de son col posé sur le milieu du col
+      const ds = state.donor.shape;
+      h.base = clamp(s.torsoW / ds.torsoW, 0.2, 5);
+      h.zoom = 100;
+      h.rot = 0;
+      h.mesh = Array.from({ length: 9 }, () => [0, 0]);
+      const ax = (ds.neckX ?? ds.cx) - ds.box.x;
+      const ay = ds.top - ds.box.y;
+      h.x = (s.neckX ?? s.cx) + (h.img.width / 2 - ax) * h.base;
+      h.y = s.top + (h.img.height / 2 - ay) * h.base;
+      h.placed = true;
+      return;
+    }
     h.base = Math.max(s.bw / h.img.width, s.bh / h.img.height) * 1.04;
     h.zoom = 100;
     h.rot = 0;
@@ -1194,12 +1245,30 @@
     els.detectBar.style.width = state.detect.frac == null ? '' : `${Math.round(state.detect.frac * 100)}%`;
     els.redetectBtn.hidden = !hasPhoto || state.detect.busy;
     els.engineSelect.disabled = state.detect.busy;
-    els.photoThumb.hidden = !hasPhoto;
-    if (hasPhoto && els.photoThumb.dataset.src !== String(state.photo.id)) {
-      els.photoThumb.src = state.photo.canvas.toDataURL('image/jpeg', 0.6);
-      els.photoThumb.dataset.src = String(state.photo.id);
+    if (DUO) {
+      els.duoDrops.forEach((drop, i) => {
+        const rec = state.photos[i];
+        const img = drop.querySelector('img');
+        img.hidden = !rec;
+        if (rec && img.dataset.src !== String(rec.id)) {
+          img.src = rec.thumb;
+          img.dataset.src = String(rec.id);
+        }
+        drop.querySelector('span').textContent = rec ? `${t('swap2.photoN', { n: i + 1 })} · ${rec.name}` : t(`swap2.photo${i + 1}`);
+        drop.classList.toggle('is-base', !!rec && i === state.baseIndex);
+      });
+      els.baseSeg.querySelectorAll('button[data-base]').forEach((b) => {
+        b.setAttribute('aria-pressed', String(Number(b.dataset.base) === state.baseIndex));
+      });
+      els.swapHalvesBtn.disabled = !state.donor;
+    } else {
+      els.photoThumb.hidden = !hasPhoto;
+      if (hasPhoto && els.photoThumb.dataset.src !== String(state.photo.id)) {
+        els.photoThumb.src = state.photo.canvas.toDataURL('image/jpeg', 0.6);
+        els.photoThumb.dataset.src = String(state.photo.id);
+      }
+      els.photoDropText.textContent = hasPhoto ? state.photo.name : t('swap.photoDrop');
     }
-    els.photoDropText.textContent = hasPhoto ? state.photo.name : t('swap.photoDrop');
 
     els.toolBar.querySelectorAll('button[data-tool]').forEach((b) => {
       b.setAttribute('aria-pressed', String(b.dataset.tool === state.tool));
@@ -1209,8 +1278,9 @@
     els.keys.innerHTML = t(`swap.keys.${state.tool}`);
 
     els.growRange.value = state.grow;
-    els.growRange.disabled = !state.autoBase;
-    const growPx = state.detectBox ? Math.round((state.grow / 100) * state.detectBox.w) : null;
+    const det = state.photo && state.photo.det;
+    els.growRange.disabled = !det;
+    const growPx = det ? Math.round((state.grow / 100) * det.box.w) : null;
     els.growOut.textContent = growPx == null ? `${num(state.grow, 1)} %` : `${growPx > 0 ? '+' : ''}${growPx} px`;
     els.brushSize.value = state.brush;
     els.brushSizeOut.textContent = `${state.brush} px`;
@@ -1239,13 +1309,15 @@
       card.badge.hidden = state.active !== i;
       card.mode.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === h.mode)));
       card.body.hidden = h.mode !== 'image';
-      card.thumb.hidden = !h.img;
-      if (h.img && card.thumb.dataset.v !== h.name + h.removeBg) {
-        card.thumb.src = h.img.toDataURL('image/png');
-        card.thumb.dataset.v = h.name + h.removeBg;
+      if (card.thumb) {
+        card.thumb.hidden = !h.img;
+        if (h.img && card.thumb.dataset.v !== h.name + h.removeBg) {
+          card.thumb.src = h.img.toDataURL('image/png');
+          card.thumb.dataset.v = h.name + h.removeBg;
+        }
+        card.dropText.textContent = h.img ? h.name : t('swap.shirtDrop');
+        card.removeBg.checked = h.removeBg;
       }
-      card.dropText.textContent = h.img ? h.name : t('swap.shirtDrop');
-      card.removeBg.checked = h.removeBg;
       card.zoom.value = h.zoom;
       card.zoomOut.textContent = `${Math.round(h.zoom)} %`;
       card.rot.value = h.rot;
@@ -1278,8 +1350,10 @@
 
     els.previewBtn.disabled = !hasPhoto || state.detect.busy;
     els.previewBtn.title = hasPhoto ? '' : t('swap.disabledTitle');
-    let status = t('swap.statusStart');
+    let status = t(DUO ? 'swap2.statusStart' : 'swap.statusStart');
     if (state.detect.busy) status = state.detect.text;
+    else if (DUO && state.photos.filter(Boolean).length < 2) status = t(hasPhoto ? 'swap2.statusOne' : 'swap2.statusStart');
+    else if (DUO && hasPhoto && state.shape) status = t('swap2.statusReady');
     else if (hasPhoto && !state.shape) status = t('swap.statusNoZone');
     else if (hasPhoto) status = state.halves.some((h) => h.mode === 'image' && h.img) ? t('swap.statusEdit') : t('swap.statusReady');
     els.status.textContent = status;
@@ -1337,23 +1411,29 @@
       card.mode.addEventListener('click', (e) => {
         const b = e.target.closest('button[data-mode]');
         if (!b) return;
+        if (DUO && b.dataset.mode === 'image' && !state.donor) {
+          toast(t('swap2.needOther'));
+          return;
+        }
         h().mode = b.dataset.mode;
         state.active = i;
-        if (h().mode === 'image' && !h().img) card.file.click();
+        if (h().mode === 'image' && !h().img && card.file) card.file.click();
         invalidate({ layers: [i] });
         refreshUI();
       });
-      card.file.addEventListener('change', () => {
-        if (card.file.files[0]) setShirt(i, card.file.files[0]);
-        card.file.value = '';
-      });
-      bindDrop(card.drop, (file) => setShirt(i, file));
-      card.removeBg.addEventListener('change', () => {
-        h().removeBg = card.removeBg.checked;
-        prepareShirt(h());
-        invalidate({ layers: [i] });
-        refreshUI();
-      });
+      if (card.file) {
+        card.file.addEventListener('change', () => {
+          if (card.file.files[0]) setShirt(i, card.file.files[0]);
+          card.file.value = '';
+        });
+        bindDrop(card.drop, (file) => setShirt(i, file));
+        card.removeBg.addEventListener('change', () => {
+          h().removeBg = card.removeBg.checked;
+          prepareShirt(h());
+          invalidate({ layers: [i] });
+          refreshUI();
+        });
+      }
       card.zoom.addEventListener('input', () => { h().zoom = Number(card.zoom.value); changedHalf(i); });
       card.rot.addEventListener('input', () => { h().rot = Number(card.rot.value); changedHalf(i); });
       card.bright.addEventListener('input', () => { h().bright = Number(card.bright.value); changedHalf(i); });
@@ -1415,10 +1495,6 @@
     };
     state.mask = makeCanvas(state.photo.w, state.photo.h);
     state.autoMask = null;
-    state.autoBase = null;
-    state.personMask = null;
-    state.blockMask = null;
-    state.detectBox = null;
     state.shape = null;
     state.frames = {};
     state.halves.forEach((h) => { h.placed = false; });
@@ -1458,6 +1534,74 @@
     return pipe;
   }
 
+  // Détection complète d'une photo, en trois étapes : modèle de vêtements sur la photo entière (situer le
+  // maillot), puis sur un recadrage du joueur (bords précis), puis silhouette exacte du joueur.
+  // Renvoie { autoBase, box, person, block, faceX } (zone avant réglage du bord) ou null si pas de maillot.
+  async function analyze(p, token, tag = '') {
+    const busy = (key) => setBusy(tag + t(key));
+    busy('swap.analyzing');
+    const pipe = await getSegmenter(els.engineSelect.value);
+    if (token !== detectToken) return null;
+    busy('swap.analyzing');
+    await new Promise((r) => setTimeout(r, 30));
+    const full = { x: 0, y: 0, w: p.w, h: p.h };
+    const first = await segment(pipe, p, full, LOCATE_MAX);
+    if (token !== detectToken) return null;
+    let found = first.hits.length ? maskFromSegmentation(p, first.hits, full) : null;
+    let used = first;
+    // 2e passage recadré sur le maillot (large marge) : le modèle, qui travaille en 512 px, voit le torse
+    // bien plus grand, d'où des bords précis (espace entre le bras et le maillot, bas du maillot)
+    // Recadrage autour d'une zone (marges : 35 % de côté, 25 % en haut et en bas), dans la photo
+    const around = (b, l, t2, r, bt) => {
+      const x0 = Math.max(0, Math.floor(b.x - b.w * l));
+      const y0 = Math.max(0, Math.floor(b.y - b.h * t2));
+      return { x: x0, y: y0, w: Math.min(p.w, Math.ceil(b.x + b.w * (1 + r))) - x0, h: Math.min(p.h, Math.ceil(b.y + b.h * (1 + bt))) - y0 };
+    };
+    if (found) {
+      let rect = around(found.box, 0.35, 0.25, 0.35, 0.25);
+      // 1er recadrage seulement s'il zoome vraiment (moins de 60 % de la photo) ; l'élargissement, toujours
+      for (let tries = 0; tries < 2 && (tries > 0 || rect.w * rect.h < p.w * p.h * 0.6); tries++) {
+        busy('swap.refining');
+        const second = await segment(pipe, p, rect, DETECT_MAX);
+        if (token !== detectToken) return null;
+        const refined = second.hits.length ? maskFromSegmentation(p, second.hits, rect) : null;
+        if (!refined) break;
+        found = refined;
+        used = second;
+        // Zone coupée par un bord du recadrage (pas par le bord de la photo) : le maillot continue,
+        // on élargit le recadrage de ce côté et on refait le passage une fois
+        const b = refined.box;
+        const edge = 3;
+        const cutL = b.x <= rect.x + edge && rect.x > 0;
+        const cutT = b.y <= rect.y + edge && rect.y > 0;
+        const cutR = b.x + b.w >= rect.x + rect.w - edge && rect.x + rect.w < p.w;
+        const cutB = b.y + b.h >= rect.y + rect.h - edge && rect.y + rect.h < p.h;
+        if (!(cutL || cutT || cutR || cutB)) break;
+        rect = around(b, cutL ? 0.8 : 0.35, cutT ? 0.6 : 0.25, cutR ? 0.8 : 0.35, cutB ? 0.8 : 0.25);
+      }
+    }
+    if (!found) return null;
+    // 3e étape : silhouette exacte du joueur sur le même recadrage (contour net, sans le fond)
+    busy('swap.silhouette');
+    const person = await personMatte(p, used.rect);
+    if (token !== detectToken) return null;
+    return { autoBase: found.canvas, box: found.box, person, block: labelMask(p, used.blocks, used.rect), faceX: first.faceX };
+  }
+
+  // Zone du maillot de la photo de base, d'après sa détection (bord réglé), puis cadre et déchirure
+  function applyBase() {
+    const p = state.photo;
+    const det = p && p.det;
+    state.faceX = det ? det.faceX : null;
+    state.autoMask = det ? adjustZone(p, det) : null;
+    state.mask = makeCanvas(p.w, p.h);
+    if (state.autoMask) state.mask.getContext('2d').drawImage(state.autoMask, 0, 0);
+    state.halves.forEach((h) => { h.placed = false; });
+    computeShape();
+    state.tear.auto = null;
+    placeTear();
+  }
+
   async function detect() {
     if (!state.photo) return;
     const token = ++detectToken;
@@ -1465,62 +1609,15 @@
     state.detect.busy = true;
     setBusy(t('swap.loadingModel', { p: '' }));
     try {
-      const pipe = await getSegmenter(els.engineSelect.value);
-      if (token !== detectToken) return;
-      setBusy(t('swap.analyzing'));
-      await new Promise((r) => setTimeout(r, 30));
       const p = state.photo;
-      // 1er passage : photo entière, pour trouver le maillot (et le visage)
-      const full = { x: 0, y: 0, w: p.w, h: p.h };
-      const first = await segment(pipe, full, LOCATE_MAX);
+      p.det = await analyze(p, token);
       if (token !== detectToken) return;
-      state.faceX = first.faceX;
-      let found = first.hits.length ? maskFromSegmentation(first.hits, full) : null;
-      let used = first;
-      // 2e passage recadré sur le maillot (large marge) : le modèle, qui travaille en 512 px, voit le torse
-      // bien plus grand, d'où des bords précis (espace entre le bras et le maillot, bas du maillot)
-      if (found) {
-        const b = found.box;
-        const mx = b.w * 0.35;
-        const my = b.h * 0.25;
-        const x0 = Math.max(0, Math.floor(b.x - mx));
-        const y0 = Math.max(0, Math.floor(b.y - my));
-        const rect = { x: x0, y: y0, w: Math.min(p.w, Math.ceil(b.x + b.w + mx)) - x0, h: Math.min(p.h, Math.ceil(b.y + b.h + my)) - y0 };
-        if (rect.w * rect.h < p.w * p.h * 0.6) {
-          setBusy(t('swap.refining'));
-          const second = await segment(pipe, rect, DETECT_MAX);
-          if (token !== detectToken) return;
-          const refined = second.hits.length ? maskFromSegmentation(second.hits, rect) : null;
-          if (refined) {
-            found = refined;
-            used = second;
-          }
-        }
-      }
-      if (found) {
-        // 3e étape : silhouette exacte du joueur sur le même recadrage (contour net, sans le fond)
-        setBusy(t('swap.silhouette'));
-        const person = await personMatte(used.rect);
-        if (token !== detectToken) return;
-        state.autoBase = found.canvas;
-        state.detectBox = found.box;
-        state.personMask = person;
-        state.blockMask = labelMask(used.blocks, used.rect);
-      }
-      const mask = found && adjustZone();
       state.detect.busy = false;
-      if (!mask) {
-        state.autoMask = null;
+      applyBase();
+      if (!p.det) {
         state.tool = 'add';
         toast(t('swap.noShirt'));
       } else {
-        state.autoMask = mask;
-        state.mask = makeCanvas(p.w, p.h);
-        state.mask.getContext('2d').drawImage(mask, 0, 0);
-        state.halves.forEach((h) => { h.placed = false; });
-        computeShape();
-        state.tear.auto = null;
-        placeTear();
         toast(t('swap.detected', { s: num((performance.now() - started) / 1000, 1) }));
       }
       invalidate({ shape: true, tint: true });
@@ -1536,10 +1633,10 @@
 
   // Un passage du modèle sur une partie de la photo (rect, en px de la photo) : zones du maillot et centre
   // du visage (px de la photo)
-  async function segment(pipe, rect, max) {
+  async function segment(pipe, photo, rect, max) {
     const k = Math.min(1, max / Math.max(rect.w, rect.h));
     const c = makeCanvas(rect.w * k, rect.h * k);
-    c.getContext('2d').drawImage(state.photo.canvas, rect.x, rect.y, rect.w, rect.h, 0, 0, c.width, c.height);
+    c.getContext('2d').drawImage(photo.canvas, rect.x, rect.y, rect.w, rect.h, 0, 0, c.width, c.height);
     const out = await pipe(await engine.RawImage.fromBlob(await canvasToBlob(c, 'image/png')));
     const face = out.find((o) => o.label === 'Face');
     const fx = face ? maskCenterX(face.mask) : null;
@@ -1552,8 +1649,7 @@
   }
 
   // Réunion de zones du modèle (opacité = zone), à la taille de la photo ; vide hors du recadrage
-  function labelMask(raws, rect) {
-    const p = state.photo;
+  function labelMask(p, raws, rect) {
     const c = makeCanvas(p.w, p.h);
     if (!raws.length) return c;
     const w = raws[0].width;
@@ -1575,13 +1671,13 @@
   // Silhouette du joueur sur la partie « rect » de la photo (IMG.LY Background Removal, dans le navigateur) :
   // canvas à la taille de la photo, opacité = joueur (bord adouci, intérieur bien opaque)
   let personEngine = null;
-  async function personMatte(rect) {
+  async function personMatte(photo, rect) {
     if (!personEngine) personEngine = import(SW.personEngineUrl).catch((err) => { personEngine = null; throw err; });
     const mod = await personEngine;
     const removeBackground = mod.removeBackground || mod.default;
     const k = Math.min(1, DETECT_MAX / Math.max(rect.w, rect.h));
     const c = makeCanvas(rect.w * k, rect.h * k);
-    c.getContext('2d').drawImage(state.photo.canvas, rect.x, rect.y, rect.w, rect.h, 0, 0, c.width, c.height);
+    c.getContext('2d').drawImage(photo.canvas, rect.x, rect.y, rect.w, rect.h, 0, 0, c.width, c.height);
     const input = await canvasToBlob(c, 'image/png');
     const downloads = new Map();
     const config = {
@@ -1605,7 +1701,7 @@
     const url = URL.createObjectURL(blob);
     let cut;
     try { cut = await loadImage(url); } finally { URL.revokeObjectURL(url); }
-    const p = state.photo;
+    const p = photo;
     const out = makeCanvas(p.w, p.h);
     const ox = readCtx(out);
     ox.imageSmoothingEnabled = true;
@@ -1632,12 +1728,11 @@
   // (bande du col, haut du col dans la nuque, bas des manches, flancs dans l'ombre), mais seulement dans la
   // silhouette du joueur, jamais sur la peau ni sur le short ou les cheveux ; rétrécie si le réglage est
   // négatif. Le contour extérieur suit ensuite la silhouette exacte du joueur (net, jamais de fond).
-  function adjustZone() {
-    const p = state.photo;
+  function adjustZone(p, det) {
     const out = makeCanvas(p.w, p.h);
     const ox = readCtx(out);
-    ox.drawImage(state.autoBase, 0, 0);
-    const b = state.detectBox;
+    ox.drawImage(det.autoBase, 0, 0);
+    const b = det.box;
     const g = (state.grow / 100) * b.w;
     const m = Math.ceil(Math.abs(g)) + 6;
     const bx = Math.max(0, Math.floor(b.x - m));
@@ -1646,10 +1741,10 @@
     const h = Math.min(p.h, Math.ceil(b.y + b.h + m)) - by;
     const img = ox.getImageData(bx, by, w, h);
     const d = img.data;
-    const person = readCtx(state.personMask).getImageData(bx, by, w, h).data;
+    const person = readCtx(det.person).getImageData(bx, by, w, h).data;
     if (g > 0) {
-      const block = readCtx(state.blockMask).getImageData(bx, by, w, h).data;
-      const px = readCtx(state.photo.canvas).getImageData(bx, by, w, h).data;
+      const block = readCtx(det.block).getImageData(bx, by, w, h).data;
+      const px = readCtx(p.canvas).getImageData(bx, by, w, h).data;
       // Distance de chaque pixel hors zone à la zone (transformée de distance sur l'inverse)
       const inv = new Uint8ClampedArray(w * h * 4);
       for (let i = 0; i < w * h; i++) inv[i * 4 + 3] = d[i * 4 + 3] < 128 ? 255 : 0;
@@ -1676,9 +1771,13 @@
 
   function setGrow(v) {
     state.grow = clamp(v, -1.5, 6);
-    prefs.set('swap:grow', state.grow);
-    if (state.autoBase) {
-      state.autoMask = adjustZone();
+    prefs.set(`${P}:grow`, state.grow);
+    if (DUO) {
+      buildDonor();
+      invalidate({ layers: allLayers });
+    }
+    if (state.photo && state.photo.det) {
+      state.autoMask = adjustZone(state.photo, state.photo.det);
       state.mask.getContext('2d').globalCompositeOperation = 'copy';
       state.mask.getContext('2d').drawImage(state.autoMask, 0, 0);
       state.mask.getContext('2d').globalCompositeOperation = 'source-over';
@@ -1703,7 +1802,7 @@
   // Masque du maillot : zones du modèle retenues (SW.shirtLabels) réunies, réduites à la plus grande zone
   // d'un seul tenant (écarte les maillots du public), agrandies à la taille de la photo, bord net mais adouci
   // masks couvrent la partie « rect » de la photo ; renvoie { canvas (taille de la photo), box (cadre de la zone) }
-  function maskFromSegmentation(hits, rect) {
+  function maskFromSegmentation(photo, hits, rect) {
     const w = hits[0].mask.width;
     const h = hits[0].mask.height;
     const on = new Uint8Array(w * h);
@@ -1795,7 +1894,7 @@
       if (y > maxY) maxY = y;
     }
     sx.putImageData(img, 0, 0);
-    const p = state.photo;
+    const p = photo;
     const out = makeCanvas(p.w, p.h);
     const ox = readCtx(out);
     ox.imageSmoothingEnabled = true;
@@ -1810,20 +1909,20 @@
     const y0 = Math.max(0, Math.floor(box.y - mx));
     const x1 = Math.min(p.w, Math.ceil(box.x + box.w + mx));
     const y1 = Math.min(p.h, Math.ceil(box.y + box.h + mx));
-    refineEdges(out, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+    refineEdges(photo, out, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
     return { canvas: out, box };
   }
 
   // Filtre guidé (He et al.) : le bord de la zone, venu du modèle à basse résolution, se cale sur les vrais
   // contours de la photo (maillot / peau / fond), net et lisse au lieu d'être en escalier
-  function refineEdges(mask, box) {
+  function refineEdges(photo, mask, box) {
     const { x: bx, y: by, w, h } = box;
     if (w < 8 || h < 8) return;
     const n = w * h;
     const mx = readCtx(mask);
     const mimg = mx.getImageData(bx, by, w, h);
     const md = mimg.data;
-    const pd = readCtx(state.photo.canvas).getImageData(bx, by, w, h).data;
+    const pd = readCtx(photo.canvas).getImageData(bx, by, w, h).data;
     const I = new Float32Array(n);
     const P = new Float32Array(n);
     const II = new Float32Array(n);
@@ -1892,6 +1991,8 @@
   function resetAll() {
     detectToken++;
     state.photo = null;
+    state.photos = [null, null];
+    state.donor = null;
     state.mask = null;
     state.autoMask = null;
     state.shape = null;
@@ -1900,10 +2001,213 @@
     cache.layers = [null, null];
     cache.tear = null;
     cache.tint = null;
-    els.photoThumb.dataset.src = '';
+    if (els.photoThumb) els.photoThumb.dataset.src = '';
     layoutStage();
     refreshUI();
     paint();
+  }
+
+  // ---------- Swap shirt 2 : deux photos ----------
+  async function loadPhotoRecord(file) {
+    if (!file || !file.type.startsWith('image/')) { toast(t('toast.notImage')); return null; }
+    let loaded;
+    try {
+      loaded = await fileToCanvas(file, WORK_MAX);
+    } catch {
+      toast(t('toast.unreadable'));
+      return null;
+    }
+    const c = loaded.canvas;
+    const k = Math.min(1, 160 / Math.max(c.width, c.height));
+    const th = makeCanvas(c.width * k, c.height * k);
+    th.getContext('2d').drawImage(c, 0, 0, th.width, th.height);
+    return {
+      id: Date.now() + Math.random(),
+      canvas: c,
+      w: c.width,
+      h: c.height,
+      orig: { w: loaded.w, h: loaded.h },
+      name: file.name,
+      thumb: th.toDataURL('image/jpeg', 0.7),
+      det: undefined, // pas encore analysée (null : pas de maillot trouvé)
+    };
+  }
+
+  async function setDuoPhoto(i, file) {
+    const rec = await loadPhotoRecord(file);
+    if (!rec) return;
+    state.photos[i] = rec;
+    useBase(true);
+    analyzeAll();
+  }
+
+  // Photo de base = photos[baseIndex] ; l'autre photo donne son maillot
+  function useBase(force = false) {
+    const rec = state.photos[state.baseIndex] || null;
+    if (force || state.photo !== rec) {
+      state.photo = rec;
+      state.tear.auto = null;
+      state.tear.shift = 0;
+      state.tear.tilt = 0;
+      state.frames = {};
+      state.shape = null;
+      state.autoMask = null;
+      state.mask = rec ? makeCanvas(rec.w, rec.h) : null;
+      cache.layers = [null, null];
+      cache.tear = null;
+      if (rec && rec.det) applyBase();
+      layoutStage();
+    }
+    buildDonor();
+    invalidate({ shape: true, tint: true });
+    refreshUI();
+  }
+
+  function setBase(i) {
+    if (i === state.baseIndex) return;
+    state.baseIndex = i;
+    useBase(true);
+  }
+
+  // Maillot de l'autre photo : découpé selon sa zone (même réglage de bord), recadré
+  function buildDonor() {
+    state.donor = null;
+    if (!DUO) return;
+    const d = state.photos[1 - state.baseIndex];
+    if (d && d.det) {
+      const mask = adjustZone(d, d.det);
+      const shape = shapeOf(d, mask);
+      if (shape) {
+        const b = shape.box;
+        const img = makeCanvas(b.w, b.h);
+        const x = img.getContext('2d');
+        x.drawImage(d.canvas, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h);
+        x.globalCompositeOperation = 'destination-in';
+        x.drawImage(mask, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h);
+        // Bas prolongé (maillot plus court que celui de la base, ou coupé par le cadre) : la partie ajoutée
+        // n'apparaît que là où le maillot de la base descend plus bas
+        state.donor = { img: extendDown(img), shape, name: d.name, color: mainColor(img) };
+      }
+    }
+    state.halves.forEach((h) => {
+      h.img = state.donor ? state.donor.img : null;
+      h.source = h.img;
+      h.color = state.donor ? state.donor.color : null;
+      h.name = state.donor ? state.donor.name : '';
+      h.placed = false;
+      if (state.shape) placeHalf(h);
+    });
+  }
+
+  // Prolonge un maillot vers le bas avec le « profil » de sa dernière bande (couleur moyenne de chaque colonne :
+  // les rayures continuent tout droit, sans plis ni logos étirés), fondu avec le bas du maillot. La lumière
+  // et les plis de la photo de base s'y appliquent ensuite comme partout.
+  function extendDown(img) {
+    const w = img.width;
+    const h = img.height;
+    const d = readCtx(img).getImageData(0, 0, w, h).data;
+    const cover = (y) => {
+      let n = 0;
+      for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 128) n++;
+      return n;
+    };
+    let widest = 0;
+    for (let y = 0; y < h; y += 2) widest = Math.max(widest, cover(y));
+    let last = h - 1;
+    while (last > 0 && cover(last) < widest * 0.3) last--;
+    const band = Math.max(6, Math.round(h * 0.06));
+    const y0 = Math.max(0, last + 1 - band);
+    // Profil : moyenne de chaque colonne sur la bande (couleurs prémultipliées par l'opacité)
+    const row = makeCanvas(w, 1);
+    const rx = row.getContext('2d');
+    const ri = rx.createImageData(w, 1);
+    for (let x = 0; x < w; x++) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let a = 0;
+      for (let y = y0; y <= last; y++) {
+        const q = (y * w + x) * 4;
+        const al = d[q + 3] / 255;
+        r += d[q] * al;
+        g += d[q + 1] * al;
+        b += d[q + 2] * al;
+        a += al;
+      }
+      const n = last - y0 + 1;
+      ri.data.set(a > 0 ? [r / a, g / a, b / a, (a / n) * 255] : [0, 0, 0, 0], x * 4);
+    }
+    rx.putImageData(ri, 0, 0);
+    const extra = Math.round(h * 0.9);
+    const fade = band;
+    const ext = makeCanvas(w, extra + fade);
+    const ex = ext.getContext('2d');
+    ex.imageSmoothingEnabled = false;
+    ex.drawImage(row, 0, 0, w, ext.height);
+    // Fondu en haut de la partie ajoutée, sur le bas du maillot (dégradé sur toute la hauteur : en mode
+    // « destination-in », ce qui n'est pas peint est effacé)
+    const g = ex.createLinearGradient(0, 0, 0, ext.height);
+    g.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    g.addColorStop(fade / ext.height, 'rgba(0, 0, 0, 1)');
+    g.addColorStop(1, 'rgba(0, 0, 0, 1)');
+    ex.globalCompositeOperation = 'destination-in';
+    ex.fillStyle = g;
+    ex.fillRect(0, 0, w, ext.height);
+    const out = makeCanvas(w, last + 1 + extra);
+    const x = out.getContext('2d');
+    x.drawImage(img, 0, 0, w, last + 1, 0, 0, w, last + 1);
+    x.drawImage(ext, 0, last + 1 - fade);
+    return out;
+  }
+
+  // Détecte le maillot des photos pas encore analysées, la photo de base d'abord. Une seule boucle à la fois :
+  // une photo ajoutée pendant l'analyse est prise ensuite ; « again » relance tout (autre moteur, bouton)
+  let analysis = null;
+  function analyzeAll(again = false) {
+    if (again) {
+      state.photos.forEach((rec) => { if (rec) rec.det = undefined; });
+      detectToken++;
+    }
+    if (analysis) return;
+    analysis = runAnalysis().finally(() => {
+      analysis = null;
+      if (state.photos.some((rec) => rec && rec.det === undefined)) analyzeAll();
+    });
+  }
+
+  async function runAnalysis() {
+    const token = detectToken;
+    const started = performance.now();
+    let count = 0;
+    try {
+      for (;;) {
+        const i = [state.baseIndex, 1 - state.baseIndex].find((k) => state.photos[k] && state.photos[k].det === undefined);
+        if (i === undefined) break;
+        const rec = state.photos[i];
+        const tag = `${t('swap2.photoN', { n: i + 1 })} · `;
+        state.detect.busy = true;
+        setBusy(tag + t('swap.loadingModel', { p: '' }));
+        const det = await analyze(rec, token, tag);
+        if (token !== detectToken) return;
+        if (state.photos[i] !== rec) continue; // photo remplacée pendant l'analyse : la nouvelle passe ensuite
+        rec.det = det;
+        count++;
+        if (!det) toast(t('swap2.noShirtN', { n: i + 1 }));
+        if (rec === state.photo) {
+          applyBase();
+          if (!det) state.tool = 'add';
+        }
+        buildDonor();
+        invalidate({ shape: true, tint: true });
+      }
+      if (count) toast(t('swap.detected', { s: num((performance.now() - started) / 1000, 1) }));
+    } catch (err) {
+      if (token === detectToken) toast(t('swap.detectFailed', { msg: err.message || err }));
+    } finally {
+      if (token === detectToken) state.detect.busy = false;
+      refreshUI();
+      paint();
+    }
   }
 
   // ---------- Pinceau de zone ----------
@@ -2087,7 +2391,7 @@
 
   function setBrush(v) {
     state.brush = clamp(Math.round(v), 6, 200);
-    prefs.set('swap:brush', state.brush);
+    prefs.set(`${P}:brush`, state.brush);
     refreshUI();
     paint();
   }
@@ -2112,7 +2416,7 @@
     if (token !== siteToken) return;
     state.site = site ? { ...site, img } : null;
     els.siteSelect.value = site ? site.id : '';
-    prefs.set('swap:site', site ? site.id : '');
+    prefs.set(`${P}:site`, site ? site.id : '');
     paint();
   }
 
@@ -2149,7 +2453,7 @@
     if (!state.photo || state.detect.busy) return;
     const fmt = currentFormat();
     els.filenameInput.value = [
-      SW.filePrefix,
+      DUO ? `${SW.filePrefix}-2` : SW.filePrefix,
       slugify(state.photo.name.replace(/\.[^.]+$/, '')),
       state.site && state.site.id,
       fmt.id !== 'original' && fmt.id,
@@ -2196,15 +2500,42 @@
     els.canvas.addEventListener('wheel', onWheel, { passive: false });
     els.canvas.addEventListener('keydown', onKey);
 
-    els.photoFile.addEventListener('change', () => { if (els.photoFile.files[0]) setPhoto(els.photoFile.files[0]); els.photoFile.value = ''; });
-    els.photoFileStage.addEventListener('change', () => { if (els.photoFileStage.files[0]) setPhoto(els.photoFileStage.files[0]); els.photoFileStage.value = ''; });
-    bindDrop(els.photoDrop, setPhoto);
-    bindDrop(els.stage, setPhoto);
-    els.redetectBtn.addEventListener('click', detect);
-    els.engineSelect.value = prefs.get('swap:engine', 'standard');
+    // Photo déposée sur l'image : la photo (Swap shirt), ou la première case libre (Swap shirt 2), sinon
+    // elle remplace l'autre photo
+    const stagePhoto = (file) => {
+      if (!DUO) { setPhoto(file); return; }
+      const free = state.photos.findIndex((rec) => !rec);
+      setDuoPhoto(free >= 0 ? free : 1 - state.baseIndex, file);
+    };
+    els.photoFileStage.addEventListener('change', () => { if (els.photoFileStage.files[0]) stagePhoto(els.photoFileStage.files[0]); els.photoFileStage.value = ''; });
+    bindDrop(els.stage, stagePhoto);
+    if (DUO) {
+      els.duoDrops.forEach((drop) => {
+        const i = Number(drop.dataset.photo);
+        const input = drop.querySelector('input[type="file"]');
+        input.addEventListener('change', () => { if (input.files[0]) setDuoPhoto(i, input.files[0]); input.value = ''; });
+        bindDrop(drop, (file) => setDuoPhoto(i, file));
+      });
+      els.baseSeg.addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-base]');
+        if (b) setBase(Number(b.dataset.base));
+      });
+      els.swapHalvesBtn.addEventListener('click', () => {
+        state.halves.forEach((h) => { h.mode = h.mode === 'image' ? 'keep' : 'image'; });
+        invalidate({ layers: allLayers });
+        refreshUI();
+      });
+      els.redetectBtn.addEventListener('click', () => analyzeAll(true));
+    } else {
+      els.photoFile.addEventListener('change', () => { if (els.photoFile.files[0]) setPhoto(els.photoFile.files[0]); els.photoFile.value = ''; });
+      bindDrop(els.photoDrop, setPhoto);
+      els.redetectBtn.addEventListener('click', detect);
+    }
+    els.engineSelect.value = prefs.get(`${P}:engine`, 'standard');
     els.engineSelect.addEventListener('change', () => {
-      prefs.set('swap:engine', els.engineSelect.value);
-      if (state.photo) detect();
+      prefs.set(`${P}:engine`, els.engineSelect.value);
+      if (DUO) analyzeAll(true);
+      else if (state.photo) detect();
     });
     els.resetBtn.addEventListener('click', resetAll);
 
@@ -2217,7 +2548,7 @@
     els.showZone.addEventListener('change', () => { state.showZone = els.showZone.checked; paint(); });
     els.tearWidth.addEventListener('input', () => {
       state.tear.width = Number(els.tearWidth.value);
-      prefs.set('swap:tearWidth', state.tear.width);
+      prefs.set(`${P}:tearWidth`, state.tear.width);
       invalidate({ tear: true });
       refreshUI();
     });
@@ -2238,18 +2569,18 @@
     });
     els.fillZone.addEventListener('change', () => {
       state.fill = els.fillZone.checked;
-      prefs.set('swap:fill', state.fill);
+      prefs.set(`${P}:fill`, state.fill);
       invalidate({ layers: allLayers });
     });
     els.lightRange.addEventListener('input', () => {
       state.light = Number(els.lightRange.value);
-      prefs.set('swap:light', state.light);
+      prefs.set(`${P}:light`, state.light);
       invalidate({ layers: allLayers });
       refreshUI();
     });
     els.foldsRange.addEventListener('input', () => {
       state.folds = Number(els.foldsRange.value);
-      prefs.set('swap:folds', state.folds);
+      prefs.set(`${P}:folds`, state.folds);
       invalidate({ layers: allLayers });
       refreshUI();
     });
@@ -2257,13 +2588,13 @@
     els.siteSelect.addEventListener('change', () => selectSite(els.siteSelect.value));
     els.logoLight.addEventListener('change', () => {
       state.logoLight = els.logoLight.checked;
-      prefs.set('swap:logoLight', state.logoLight);
+      prefs.set(`${P}:logoLight`, state.logoLight);
       selectSite(state.site ? state.site.id : '');
     });
 
     els.formatChoice.addEventListener('change', () => {
       state.format = els.formatChoice.value;
-      prefs.set('swap:format', state.format);
+      prefs.set(`${P}:format`, state.format);
       if (state.tool === 'frame' && currentFormat().id === 'original') state.tool = 'move';
       layoutStage();
       refreshUI();
@@ -2306,7 +2637,7 @@
   populateSites();
   layoutStage();
   refreshUI();
-  selectSite(prefs.get('swap:site', ''));
+  selectSite(prefs.get(`${P}:site`, ''));
 
   // Exposé pour le débogage dans la console.
   window.SwapStudio = { state, cache, setPhoto, setShirt, detect, invalidate, paint };

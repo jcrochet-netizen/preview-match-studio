@@ -154,6 +154,17 @@ garde le maillot de la photo ou reçoit l'image d'un autre maillot (futur club, 
 
 Réglages : `swapShirt` à la fin de `js/config.js` (modèle, zones retenues, formats, taille du logo).
 
+### Swap shirt 2 (`swapshirt2.html`)
+
+Même outil avec deux photos, sans image de maillot à préparer : on importe deux photos (deux joueurs, ou le même
+joueur dans deux tenues) et on choisit la **photo de base** (l'image finale). Le maillot de chacune est détecté
+(mêmes trois étapes) ; celui de l'autre photo est découpé selon sa zone et posé automatiquement sur la photo de
+base : même largeur de torse, milieu du col sur le milieu du col. S'il est plus court (cadrage, posture), il est
+prolongé vers le bas avec le profil de couleurs de sa dernière bande (les rayures continuent). Chaque moitié
+prend « Photo de base » ou « Autre photo » (« Inverser les moitiés »), puis tout se règle comme dans Swap shirt
+(déchirure, déplacement, déformation, lumière, logo, formats). Réglages enregistrés à part (préfixe `swap2`).
+Le même fichier `js/swapshirt.js` sert aux deux pages (`data-mode="duo"` sur la page 2).
+
 ## Ajouter un site et son template (pour toute l'équipe)
 
 Chaque site a son propre template : choisir le site dans le menu charge son fond et place son logo.
